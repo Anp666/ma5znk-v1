@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, Search, Mail, Phone, MapPin, Edit2, Trash2, CreditCard, History, TrendingUp, Wallet, AlertCircle } from 'lucide-react';
+import { Users, Plus, Search, Mail, Phone, MapPin, Edit2, Trash2, CreditCard, History, TrendingUp, Wallet, AlertCircle, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { translations } from '../translations';
 import { toast } from 'react-hot-toast';
 import { recordCustomerPayment, getCollection, addToCollection, updateInCollection, deleteFromCollection } from '../services/accountingService';
@@ -143,7 +144,7 @@ export default function Customers({ lang, profile }: Props) {
       {/* ... existing header and summary cards ... */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="p-3 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-2xl">
+          <div className="p-3 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 rounded-2xl">
             <Users className="w-6 h-6" />
           </div>
           <div>
@@ -166,7 +167,7 @@ export default function Customers({ lang, profile }: Props) {
       {/* Financial Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex items-center gap-5">
-          <div className="w-14 h-14 bg-blue-50 dark:bg-blue-900/20 rounded-2xl flex items-center justify-center text-blue-600">
+          <div className="w-14 h-14 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl flex items-center justify-center text-emerald-600">
             <TrendingUp className="w-7 h-7" />
           </div>
           <div>
@@ -298,189 +299,260 @@ export default function Customers({ lang, profile }: Props) {
       />
 
       {/* Customer Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-zinc-900 rounded-[2.5rem] w-full max-w-lg max-h-[90vh] min-h-[70vh] p-10 shadow-2xl flex flex-col overflow-hidden">
-            <h3 className="text-2xl font-bold mb-8">{formData.id ? (lang === 'ar' ? 'تعديل عميل' : 'Edit Customer') : (lang === 'ar' ? 'إضافة عميل جديد' : 'Add New Customer')}</h3>
-            <form onSubmit={handleSubmit} className="space-y-6 flex-1 overflow-y-auto pr-2 custom-scrollbar">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">{t.customerName}</label>
-                <input 
-                  required
-                  type="text" 
-                  value={formData.name}
-                  onChange={e => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-6 py-4 bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl outline-none focus:ring-2 ring-emerald-500/20"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">Email</label>
-                  <input 
-                    type="email" 
-                    value={formData.email}
-                    onChange={e => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-6 py-4 bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl outline-none focus:ring-2 ring-emerald-500/20"
-                  />
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsModalOpen(false)}
+              className="absolute inset-0 bg-zinc-950/60 backdrop-blur-xl" 
+            />
+            <motion.div 
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              className="relative m-modal"
+            >
+              <div className="p-8">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-2xl font-black tracking-tighter">
+                    {formData.id ? (lang === 'ar' ? 'تعديل عميل' : 'Edit Customer') : (lang === 'ar' ? 'إضافة عميل جديد' : 'Add New Customer')}
+                  </h3>
+                  <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
+                    <X className="w-6 h-6" />
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">Phone</label>
-                  <input 
-                    required
-                    type="tel" 
-                    value={formData.phone}
-                    onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-6 py-4 bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl outline-none focus:ring-2 ring-emerald-500/20"
-                  />
-                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{t.customerName}</label>
+                    <input 
+                      required
+                      type="text" 
+                      value={formData.name}
+                      onChange={e => setFormData({ ...formData, name: e.target.value })}
+                      className="m-input"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">Email</label>
+                      <input 
+                        type="email" 
+                        value={formData.email}
+                        onChange={e => setFormData({ ...formData, email: e.target.value })}
+                        className="m-input"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">Phone</label>
+                      <input 
+                        required
+                        type="tel" 
+                        value={formData.phone}
+                        onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                        className="m-input"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">Address</label>
+                    <textarea 
+                      value={formData.address}
+                      onChange={e => setFormData({ ...formData, address: e.target.value })}
+                      className="m-input h-24 resize-none"
+                    />
+                  </div>
+                  <div className="flex gap-4 pt-4">
+                    <button 
+                      type="button"
+                      onClick={() => setIsModalOpen(false)}
+                      className="flex-1 py-4 bg-zinc-100 dark:bg-zinc-800 rounded-2xl font-bold hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all"
+                    >
+                      {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                    </button>
+                    <button 
+                      type="submit"
+                      className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 transition-all"
+                    >
+                      {lang === 'ar' ? 'حفظ' : 'Save'}
+                    </button>
+                  </div>
+                </form>
               </div>
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">Address</label>
-                <textarea 
-                  value={formData.address}
-                  onChange={e => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full px-6 py-4 bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl outline-none focus:ring-2 ring-emerald-500/20 h-24 resize-none"
-                />
-              </div>
-              <div className="flex gap-4 pt-4 sticky bottom-0 bg-white dark:bg-zinc-900 py-2">
-                <button 
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 py-4 bg-zinc-100 dark:bg-zinc-800 rounded-2xl font-bold hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all"
-                >
-                  {lang === 'ar' ? 'إلغاء' : 'Cancel'}
-                </button>
-                <button 
-                  type="submit"
-                  className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 transition-all"
-                >
-                  {lang === 'ar' ? 'حفظ' : 'Save'}
-                </button>
-              </div>
-            </form>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
       {/* Payment Modal */}
-      {isPaymentModalOpen && selectedCustomer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-zinc-900 rounded-[2.5rem] w-full max-w-lg max-h-[90vh] min-h-[70vh] p-10 shadow-2xl flex flex-col overflow-hidden">
-            <h3 className="text-2xl font-bold mb-2">{lang === 'ar' ? 'تحصيل دفعة' : 'Receive Payment'}</h3>
-            <p className="text-zinc-500 mb-8">{selectedCustomer.name}</p>
-            <form onSubmit={handlePayment} className="space-y-6 flex-1 overflow-y-auto pr-2 custom-scrollbar">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">{lang === 'ar' ? 'المبلغ' : 'Amount'}</label>
-                <input 
-                  required
-                  type="number" 
-                  value={paymentData.amount}
-                  onChange={e => setPaymentData({ ...paymentData, amount: Number(e.target.value) })}
-                  className="w-full px-6 py-4 bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl outline-none focus:ring-2 ring-emerald-500/20 text-xl font-black"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">{lang === 'ar' ? 'طريقة الدفع' : 'Method'}</label>
-                  <select 
-                    value={paymentData.method}
-                    onChange={e => setPaymentData({ ...paymentData, method: e.target.value as any })}
-                    className="w-full px-6 py-4 bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl outline-none focus:ring-2 ring-emerald-500/20"
-                  >
-                    <option value="cash">{lang === 'ar' ? 'نقدي' : 'Cash'}</option>
-                    <option value="bank_transfer">{lang === 'ar' ? 'تحويل بنكي' : 'Bank Transfer'}</option>
-                    <option value="other">{lang === 'ar' ? 'أخرى' : 'Other'}</option>
-                  </select>
+      <AnimatePresence>
+        {isPaymentModalOpen && selectedCustomer && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsPaymentModalOpen(false)}
+              className="absolute inset-0 bg-zinc-950/60 backdrop-blur-xl" 
+            />
+            <motion.div 
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              className="relative m-modal"
+            >
+              <div className="p-8">
+                <div className="flex items-center justify-between mb-8">
+                  <div>
+                    <h3 className="text-2xl font-black tracking-tighter">{lang === 'ar' ? 'تحصيل دفعة' : 'Receive Payment'}</h3>
+                    <p className="text-zinc-500 text-sm font-bold mt-1">{selectedCustomer.name}</p>
+                  </div>
+                  <button onClick={() => setIsPaymentModalOpen(false)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
+                    <X className="w-6 h-6" />
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">{lang === 'ar' ? 'حساب الإيداع' : 'Deposit Account'}</label>
-                  <select 
-                    required
-                    value={paymentData.accountId}
-                    onChange={e => setPaymentData({ ...paymentData, accountId: e.target.value })}
-                    className="w-full px-6 py-4 bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl outline-none focus:ring-2 ring-emerald-500/20"
-                  >
-                    <option value="">{lang === 'ar' ? 'اختر حساب' : 'Select Account'}</option>
-                    {accounts.map(a => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
-                    ))}
-                  </select>
-                </div>
+
+                <form onSubmit={handlePayment} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'المبلغ' : 'Amount'}</label>
+                    <input 
+                      required
+                      type="number" 
+                      value={paymentData.amount}
+                      onChange={e => setPaymentData({ ...paymentData, amount: Number(e.target.value) })}
+                      className="m-input text-xl font-black"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'طريقة الدفع' : 'Method'}</label>
+                      <select 
+                        value={paymentData.method}
+                        onChange={e => setPaymentData({ ...paymentData, method: e.target.value as any })}
+                        className="m-input"
+                      >
+                        <option value="cash">{lang === 'ar' ? 'نقدي' : 'Cash'}</option>
+                        <option value="bank_transfer">{lang === 'ar' ? 'تحويل بنكي' : 'Bank Transfer'}</option>
+                        <option value="other">{lang === 'ar' ? 'أخرى' : 'Other'}</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'حساب الإيداع' : 'Deposit Account'}</label>
+                      <select 
+                        required
+                        value={paymentData.accountId}
+                        onChange={e => setPaymentData({ ...paymentData, accountId: e.target.value })}
+                        className="m-input"
+                      >
+                        <option value="">{lang === 'ar' ? 'اختر الحساب' : 'Select Account'}</option>
+                        {accounts.map(acc => (
+                          <option key={acc.id} value={acc.id}>{acc.name} ({currencySymbol} {acc.balance.toLocaleString()})</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'ملاحظات' : 'Notes'}</label>
+                    <textarea 
+                      value={paymentData.notes}
+                      onChange={e => setPaymentData({ ...paymentData, notes: e.target.value })}
+                      className="m-input h-24 resize-none"
+                    />
+                  </div>
+                  <div className="flex gap-4 pt-4">
+                    <button 
+                      type="button"
+                      onClick={() => setIsPaymentModalOpen(false)}
+                      className="flex-1 py-4 bg-zinc-100 dark:bg-zinc-800 rounded-2xl font-bold hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all"
+                    >
+                      {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                    </button>
+                    <button 
+                      type="submit"
+                      className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 transition-all"
+                    >
+                      {lang === 'ar' ? 'تأكيد الدفع' : 'Confirm Payment'}
+                    </button>
+                  </div>
+                </form>
               </div>
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-widest text-zinc-400 mb-2">{lang === 'ar' ? 'ملاحظات' : 'Notes'}</label>
-                <textarea 
-                  value={paymentData.notes}
-                  onChange={e => setPaymentData({ ...paymentData, notes: e.target.value })}
-                  className="w-full px-6 py-4 bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl outline-none focus:ring-2 ring-emerald-500/20 h-24 resize-none"
-                />
-              </div>
-              <div className="flex gap-4 pt-4 sticky bottom-0 bg-white dark:bg-zinc-900 py-2">
-                <button 
-                  type="button"
-                  onClick={() => setIsPaymentModalOpen(false)}
-                  className="flex-1 py-4 bg-zinc-100 dark:bg-zinc-800 rounded-2xl font-bold hover:bg-zinc-200 transition-all"
-                >
-                  {lang === 'ar' ? 'إلغاء' : 'Cancel'}
-                </button>
-                <button 
-                  type="submit"
-                  className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 transition-all"
-                >
-                  {lang === 'ar' ? 'تسجيل الدفعة' : 'Record Payment'}
-                </button>
-              </div>
-            </form>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
       {/* History Modal */}
-      {isHistoryModalOpen && selectedCustomer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-zinc-900 rounded-[2.5rem] w-full max-w-2xl p-10 shadow-2xl max-h-[80vh] flex flex-col">
-            <h3 className="text-2xl font-bold mb-2">{lang === 'ar' ? 'سجل المدفوعات' : 'Payment History'}</h3>
-            <p className="text-zinc-500 mb-8">{selectedCustomer.name}</p>
-            
-            <div className="flex-1 overflow-y-auto pr-4 custom-scrollbar">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b border-zinc-100 dark:border-zinc-800">
-                    <th className="pb-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest">{lang === 'ar' ? 'التاريخ' : 'Date'}</th>
-                    <th className="pb-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest">{lang === 'ar' ? 'المبلغ' : 'Amount'}</th>
-                    <th className="pb-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest">{lang === 'ar' ? 'الطريقة' : 'Method'}</th>
-                    <th className="pb-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest">{lang === 'ar' ? 'ملاحظات' : 'Notes'}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-50 dark:divide-zinc-800/50">
-                    {paymentHistory.map((payment) => (
-                      <tr key={payment.id}>
-                        <td className="py-4 text-sm text-zinc-500">{new Date(payment.date).toLocaleDateString()}</td>
-                        <td className="py-4 text-sm font-black text-emerald-600">{currencySymbol} {(payment.amount || 0).toLocaleString()}</td>
-                        <td className="py-4 text-sm text-zinc-600 dark:text-zinc-400">{payment.method}</td>
-                        <td className="py-4 text-sm text-zinc-400 italic">{payment.notes || '-'}</td>
-                      </tr>
-                    ))}
-                  {paymentHistory.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="py-10 text-center text-zinc-400 italic">
-                        {lang === 'ar' ? 'لا يوجد سجل مدفوعات' : 'No payment history found'}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <button 
+      <AnimatePresence>
+        {isHistoryModalOpen && selectedCustomer && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               onClick={() => setIsHistoryModalOpen(false)}
-              className="mt-8 w-full py-4 bg-zinc-100 dark:bg-zinc-800 rounded-2xl font-bold hover:bg-zinc-200 transition-all"
+              className="absolute inset-0 bg-zinc-950/60 backdrop-blur-xl" 
+            />
+            <motion.div 
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              className="relative m-modal !max-w-2xl"
             >
-              {lang === 'ar' ? 'إغلاق' : 'Close'}
-            </button>
+              <div className="p-8">
+                <div className="flex items-center justify-between mb-8">
+                  <div>
+                    <h3 className="text-2xl font-black tracking-tighter">{lang === 'ar' ? 'سجل المدفوعات' : 'Payment History'}</h3>
+                    <p className="text-zinc-500 text-sm font-bold mt-1">{selectedCustomer.name}</p>
+                  </div>
+                  <button onClick={() => setIsHistoryModalOpen(false)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+                
+                <div className="overflow-x-auto custom-scrollbar">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b border-zinc-100 dark:border-zinc-800">
+                        <th className="pb-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest">{lang === 'ar' ? 'التاريخ' : 'Date'}</th>
+                        <th className="pb-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest">{lang === 'ar' ? 'المبلغ' : 'Amount'}</th>
+                        <th className="pb-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest">{lang === 'ar' ? 'الطريقة' : 'Method'}</th>
+                        <th className="pb-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest">{lang === 'ar' ? 'ملاحظات' : 'Notes'}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-50 dark:divide-zinc-800/50">
+                      {paymentHistory.map((payment) => (
+                        <tr key={payment.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                          <td className="py-4 text-xs font-bold text-zinc-500">{new Date(payment.date).toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US')}</td>
+                          <td className="py-4 text-xs font-black text-emerald-600">{currencySymbol} {(payment.amount || 0).toLocaleString()}</td>
+                          <td className="py-4 text-xs font-bold text-zinc-500 uppercase tracking-widest">{payment.method}</td>
+                          <td className="py-4 text-xs font-medium text-zinc-400 italic">{payment.notes || '-'}</td>
+                        </tr>
+                      ))}
+                      {paymentHistory.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-10 text-center text-zinc-400 italic">
+                            {lang === 'ar' ? 'لا يوجد سجل مدفوعات' : 'No payment history found'}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <button 
+                  onClick={() => setIsHistoryModalOpen(false)}
+                  className="mt-8 w-full py-4 bg-zinc-100 dark:bg-zinc-800 rounded-2xl font-bold hover:bg-zinc-200 transition-all"
+                >
+                  {lang === 'ar' ? 'إغلاق' : 'Close'}
+                </button>
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 }

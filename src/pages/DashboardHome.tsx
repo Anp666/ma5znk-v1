@@ -16,7 +16,10 @@ import {
   Wallet,
   AlertTriangle,
   CreditCard,
-  RotateCcw
+  RotateCcw,
+  Sparkles,
+  Lightbulb,
+  Zap
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -34,6 +37,7 @@ import { translations } from '../translations';
 import { motion } from 'motion/react';
 import { getCurrencySymbol } from '../utils/currency';
 import { getCollection } from '../services/accountingService';
+import { generateSmartInsights } from '../services/gemini';
 
 interface Props {
   lang: 'ar' | 'en';
@@ -49,22 +53,43 @@ export default function DashboardHome({ lang, profile, setActiveTab }: Props) {
     totalProducts: 0,
     totalInvoices: 0,
     inventoryValue: 0,
-    lowStockCount: 0
+    lowStockCount: 0,
+    expiredCount: 0,
+    treasuryBalance: 0
   });
   const [recentInvoices, setRecentInvoices] = useState<Invoice[]>([]);
   const [chartData, setChartData] = useState<any[]>([]);
   const [lowStockProducts, setLowStockProducts] = useState<Product[]>([]);
+  const [expiryAlerts, setExpiryAlerts] = useState<Product[]>([]);
+  const [aiInsights, setAiInsights] = useState<any[]>([]);
+  const [isInsightsLoading, setIsInsightsLoading] = useState(false);
 
   useEffect(() => {
-    const loadData = () => {
+    const loadData = async () => {
       const products = getCollection<Product>('products');
       const invoices = getCollection<Invoice>('invoices');
+      const accounts = getCollection<any>('accounts');
 
       // Stats
       const totalProducts = products.length;
       const inventoryValue = products.reduce((sum: number, p: Product) => sum + (p.purchasePrice * p.quantity), 0);
-      const lowStock = products.filter((p: Product) => p.quantity <= p.minStock);
+      const lowStock = products.filter((p: Product) => p.quantity <= (p.minStock || 5));
       
+      const treasuryBalance = accounts
+        .filter((a: any) => a.type === 'Asset' && (a.name.toLowerCase().includes('cash') || a.name.toLowerCase().includes('bank')))
+        .reduce((sum: number, a: any) => sum + a.balance, 0);
+      
+      const today = new Date();
+      const thirtyDaysFromNow = new Date();
+      thirtyDaysFromNow.setDate(today.getDate() + 30);
+
+      const expired = products.filter((p: Product) => p.expiryDate && new Date(p.expiryDate) < today);
+      const nearExpiry = products.filter((p: Product) => {
+        if (!p.expiryDate) return false;
+        const expiry = new Date(p.expiryDate);
+        return expiry >= today && expiry <= thirtyDaysFromNow;
+      });
+
       const totalSales = invoices.reduce((sum: number, inv: Invoice) => sum + inv.total, 0);
       const totalInvoices = invoices.length;
 
@@ -73,10 +98,16 @@ export default function DashboardHome({ lang, profile, setActiveTab }: Props) {
         totalProducts,
         totalInvoices,
         inventoryValue,
-        lowStockCount: lowStock.length
+        lowStockCount: lowStock.length,
+        expiredCount: expired.length,
+        treasuryBalance
       });
 
       setLowStockProducts(lowStock.slice(0, 5));
+      setExpiryAlerts([...expired, ...nearExpiry].sort((a, b) => {
+        if (!a.expiryDate || !b.expiryDate) return 0;
+        return new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime();
+      }).slice(0, 5));
       setRecentInvoices(invoices.sort((a: Invoice, b: Invoice) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5));
 
       // Prepare chart data (last 7 days)
@@ -97,6 +128,21 @@ export default function DashboardHome({ lang, profile, setActiveTab }: Props) {
         };
       });
       setChartData(dailyData);
+
+      // Fetch AI Insights
+      setIsInsightsLoading(true);
+      try {
+        const insights = await generateSmartInsights({
+          stats: { totalSales, totalProducts, inventoryValue, lowStockCount: lowStock.length, expiredCount: expired.length },
+          recentSales: invoices.slice(0, 10),
+          lowStock: lowStock.slice(0, 5)
+        }, lang);
+        setAiInsights(insights);
+      } catch (e) {
+        console.error("Failed to fetch AI insights", e);
+      } finally {
+        setIsInsightsLoading(false);
+      }
     };
 
     loadData();
@@ -109,38 +155,94 @@ export default function DashboardHome({ lang, profile, setActiveTab }: Props) {
       {/* Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         <StatCard 
-          title={t.totalSales} 
-          value={`${stats.totalSales.toLocaleString()} ${currencySymbol}`} 
+          title={lang === 'ar' ? 'رصيد الخزينة' : 'Treasury Balance'} 
+          value={`${stats.treasuryBalance.toLocaleString()} ${currencySymbol}`} 
           icon={<Wallet className="w-6 h-6" />} 
-          trend="+12.5%"
+          trend="+5.4%"
           color="primary"
           delay={0}
+        />
+        <StatCard 
+          title={t.totalSales} 
+          value={`${stats.totalSales.toLocaleString()} ${currencySymbol}`} 
+          icon={<TrendingUp className="w-6 h-6" />} 
+          trend="+12.5%"
+          color="primary"
+          delay={0.1}
         />
         <StatCard 
           title={t.inventoryValue} 
           value={`${stats.inventoryValue.toLocaleString()} ${currencySymbol}`} 
           icon={<Package className="w-6 h-6" />} 
           trend="+3.2%"
-          color="blue"
-          delay={0.1}
-        />
-        <StatCard 
-          title={t.totalInvoices} 
-          value={stats.totalInvoices.toString()} 
-          icon={<FileText className="w-6 h-6" />} 
-          trend="+8.1%"
-          color="purple"
+          color="zinc"
           delay={0.2}
         />
         <StatCard 
-          title={t.lowStock} 
-          value={stats.lowStockCount.toString()} 
-          icon={<AlertTriangle className="w-6 h-6" />} 
-          trend={stats.lowStockCount > 0 ? `-${stats.lowStockCount}` : "Healthy"}
-          color={stats.lowStockCount > 0 ? "red" : "primary"}
+          title={lang === 'ar' ? 'منتجات منتهية' : 'Expired Products'} 
+          value={stats.expiredCount.toString()} 
+          icon={<AlertCircle className="w-6 h-6" />} 
+          trend={stats.expiredCount > 0 ? `+${stats.expiredCount}` : "Safe"}
+          color={stats.expiredCount > 0 ? "red" : "amber"}
           delay={0.3}
         />
       </div>
+
+      {/* AI Smart Insights */}
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-gradient-to-br from-primary/5 to-purple-500/5 dark:from-primary/10 dark:to-purple-500/10 p-10 rounded-[3rem] border border-primary/10 dark:border-primary/20"
+      >
+        <div className="flex items-center gap-4 mb-8">
+          <div className="w-12 h-12 bg-primary text-white rounded-2xl flex items-center justify-center shadow-lg shadow-primary/20">
+            <Sparkles className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-2xl font-black tracking-tight">{lang === 'ar' ? 'رؤى ذكية من الذكاء الاصطناعي' : 'AI Smart Insights'}</h3>
+            <p className="text-sm text-zinc-500 font-medium">{lang === 'ar' ? 'توصيات مخصصة لتحسين عملك' : 'Personalized recommendations to optimize your business'}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {isInsightsLoading ? (
+            Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-32 bg-white/50 dark:bg-zinc-800/50 rounded-2xl animate-pulse border border-zinc-200 dark:border-zinc-700" />
+            ))
+          ) : (
+            aiInsights.map((insight, i) => (
+              <motion.div 
+                key={i}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: i * 0.1 }}
+                className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-start gap-4">
+                  <div className={`p-2 rounded-lg ${
+                    insight.type === 'warning' ? 'bg-red-50 text-red-500 dark:bg-red-900/20' :
+                    insight.type === 'success' ? 'bg-green-50 text-green-500 dark:bg-green-900/20' :
+                    'bg-zinc-50 text-zinc-500 dark:bg-zinc-800/20'
+                  }`}>
+                    {insight.icon === 'trending' ? <TrendingUp className="w-5 h-5" /> :
+                     insight.icon === 'package' ? <Package className="w-5 h-5" /> :
+                     <Lightbulb className="w-5 h-5" />}
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm mb-1">{insight.title}</h4>
+                    <p className="text-xs text-zinc-500 leading-relaxed">{insight.description}</p>
+                  </div>
+                </div>
+              </motion.div>
+            ))
+          )}
+          {!isInsightsLoading && aiInsights.length === 0 && (
+            <div className="col-span-3 text-center py-6 text-zinc-400">
+              <p className="text-sm">{lang === 'ar' ? 'لا توجد رؤى متاحة حالياً' : 'No insights available at the moment'}</p>
+            </div>
+          )}
+        </div>
+      </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
         {/* Sales Chart */}
@@ -212,10 +314,64 @@ export default function DashboardHome({ lang, profile, setActiveTab }: Props) {
           >
             <h3 className="text-2xl font-black mb-8 tracking-tight">{t.quickActions}</h3>
             <div className="grid grid-cols-2 gap-4">
-              <QuickAction icon={<Plus />} label={lang === 'ar' ? 'إنشاء فاتورة' : 'New Invoice'} color="primary" onClick={() => setActiveTab('invoices')} />
-              <QuickAction icon={<Package />} label={lang === 'ar' ? 'إضافة منتج' : 'Add Product'} color="blue" onClick={() => setActiveTab('inventory')} />
-              <QuickAction icon={<CreditCard />} label={lang === 'ar' ? 'إضافة شيك' : 'Add Cheque'} color="purple" onClick={() => setActiveTab('cheques')} />
-              <QuickAction icon={<RotateCcw />} label={lang === 'ar' ? 'المرتجعات' : 'Returns'} color="amber" onClick={() => setActiveTab('returns')} />
+              {['admin', 'accountant', 'cashier'].includes(profile?.role) && (
+                <QuickAction icon={<Plus />} label={lang === 'ar' ? 'إنشاء فاتورة' : 'New Invoice'} color="primary" onClick={() => setActiveTab('invoices')} />
+              )}
+              {['admin', 'accountant', 'cashier'].includes(profile?.role) && (
+                <QuickAction icon={<Package />} label={lang === 'ar' ? 'إضافة منتج' : 'Add Product'} color="zinc" onClick={() => setActiveTab('inventory')} />
+              )}
+              {['admin', 'accountant'].includes(profile?.role) && (
+                <QuickAction icon={<CreditCard />} label={lang === 'ar' ? 'إضافة شيك' : 'Add Cheque'} color="zinc" onClick={() => setActiveTab('cheques')} />
+              )}
+              {['admin', 'accountant'].includes(profile?.role) && (
+                <QuickAction icon={<RotateCcw />} label={lang === 'ar' ? 'المرتجعات' : 'Returns'} color="amber" onClick={() => setActiveTab('returns')} />
+              )}
+            </div>
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.15 }}
+            className="bg-white dark:bg-zinc-900 p-10 rounded-[3rem] border border-zinc-200 dark:border-zinc-800 shadow-sm"
+          >
+            <div className="flex items-center justify-between mb-10">
+              <h3 className="text-2xl font-black tracking-tight">{lang === 'ar' ? 'تنبيهات الصلاحية' : 'Expiry Alerts'}</h3>
+              <button 
+                onClick={() => setActiveTab('inventory')}
+                className="text-xs font-bold text-primary hover:text-primary-hover transition-colors uppercase tracking-widest"
+              >
+                {lang === 'ar' ? 'عرض الكل' : 'View All'}
+              </button>
+            </div>
+            <div className="space-y-6">
+              {expiryAlerts.map((product) => {
+                const isExpired = new Date(product.expiryDate!) < new Date();
+                return (
+                  <div key={product.id} className="flex items-center justify-between group cursor-pointer">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isExpired ? 'bg-red-50 text-red-500 dark:bg-red-900/20' : 'bg-amber-50 text-amber-500 dark:bg-amber-900/20'}`}>
+                        <AlertCircle className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-sm text-zinc-900 dark:text-white">{product.name}</div>
+                        <div className={`text-[10px] font-black uppercase tracking-widest ${isExpired ? 'text-red-500' : 'text-amber-500'}`}>
+                          {isExpired ? (lang === 'ar' ? 'منتهي' : 'Expired') : (lang === 'ar' ? 'قارب على الانتهاء' : 'Near Expiry')}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs font-bold text-zinc-500">{product.expiryDate}</div>
+                    </div>
+                  </div>
+                );
+              })}
+              {expiryAlerts.length === 0 && (
+                <div className="text-center py-6 text-zinc-400 opacity-50">
+                  <Package className="w-10 h-10 mx-auto mb-3" />
+                  <p className="text-xs font-bold">{lang === 'ar' ? 'لا توجد تنبيهات صلاحية' : 'No expiry alerts'}</p>
+                </div>
+              )}
             </div>
           </motion.div>
 
@@ -264,8 +420,7 @@ export default function DashboardHome({ lang, profile, setActiveTab }: Props) {
 function StatCard({ title, value, icon, trend, color, delay }: any) {
   const colorClasses: any = {
     primary: 'bg-primary/10 dark:bg-primary/20 text-primary',
-    blue: 'bg-blue-50 dark:bg-blue-900/20 text-blue-600',
-    purple: 'bg-purple-50 dark:bg-purple-900/20 text-purple-600',
+    zinc: 'bg-zinc-50 dark:bg-zinc-800/20 text-zinc-600',
     amber: 'bg-amber-50 dark:bg-amber-900/20 text-amber-600',
     red: 'bg-red-50 dark:bg-red-900/20 text-red-600',
   };
@@ -294,21 +449,20 @@ function StatCard({ title, value, icon, trend, color, delay }: any) {
 
 function QuickAction({ icon, label, color, onClick }: any) {
   const colorClasses: any = {
-    primary: 'bg-primary/10 dark:bg-primary/20 text-primary hover:bg-primary hover:text-white',
-    blue: 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 hover:bg-blue-600 hover:text-white',
-    purple: 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 hover:bg-purple-600 hover:text-white',
-    amber: 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 hover:bg-amber-600 hover:text-white',
+    primary: 'bg-primary/10 dark:bg-primary/20 text-primary hover:bg-primary hover:text-white border-primary/10',
+    zinc: 'bg-zinc-50 dark:bg-zinc-800/20 text-zinc-600 hover:bg-zinc-600 hover:text-white border-zinc-100',
+    amber: 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 hover:bg-amber-600 hover:text-white border-amber-100',
   };
 
   return (
     <button 
       onClick={onClick}
-      className={`flex flex-col items-center justify-center p-6 rounded-[2rem] transition-all duration-300 gap-3 group border border-transparent hover:shadow-xl ${colorClasses[color]}`}
+      className={`flex flex-col items-center justify-center p-6 rounded-[2.5rem] transition-all duration-500 gap-4 group border hover:shadow-2xl hover:shadow-zinc-200/50 dark:hover:shadow-zinc-950/50 active:scale-95 ${colorClasses[color]}`}
     >
-      <div className="w-8 h-8 flex items-center justify-center transition-transform group-hover:scale-110">
-        {icon}
+      <div className="w-12 h-12 rounded-2xl bg-white dark:bg-zinc-800 flex items-center justify-center shadow-sm group-hover:bg-white/20 transition-all duration-500">
+        {React.cloneElement(icon, { className: "w-6 h-6" })}
       </div>
-      <span className="text-xs font-bold tracking-tight">{label}</span>
+      <span className="text-sm font-black tracking-tight">{label}</span>
     </button>
   );
 }

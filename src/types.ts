@@ -58,6 +58,7 @@ export interface Product {
   userId?: string;
   createdAt?: string;
   updatedAt?: string;
+  expiryDate?: string;
 }
 
 export interface Category {
@@ -76,6 +77,25 @@ export interface Account {
   balance: number;
   isSystem?: boolean;
   companyId: string;
+}
+
+export interface JournalEntryLine {
+  accountId: string;
+  accountName: string;
+  debit: number;
+  credit: number;
+  description?: string;
+}
+
+export interface JournalEntry {
+  id?: string;
+  date: string;
+  reference: string;
+  description: string;
+  lines: JournalEntryLine[];
+  userId: string;
+  companyId: string;
+  createdAt: string;
 }
 
 export interface Transaction {
@@ -120,6 +140,8 @@ export interface Invoice {
   paidAmount: number;
   paymentMethod: 'cash' | 'card' | 'bank_transfer' | 'credit';
   status: 'paid' | 'partially_paid' | 'unpaid' | 'pending' | 'cancelled';
+  dueDate?: string;
+  notes?: string;
   userId: string;
   companyId: string;
   priceType?: PriceType;
@@ -196,10 +218,12 @@ export interface Return {
 export interface TreasuryTransaction {
   id?: string;
   type: 'income' | 'expense' | 'transfer' | 'Cash In' | 'Cash Out' | 'Expense' | 'Supplier Payment' | 'Sales Invoice' | 'Purchase Invoice';
+  source?: 'invoice' | 'purchase' | 'expense' | 'payment' | 'cheque';
   amount: number;
   date: string;
   description: string;
   accountId: string;
+  referenceId?: string;
   category?: string;
   companyId?: string;
   userId?: string;

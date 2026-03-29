@@ -1,7 +1,8 @@
 {
-  "name": "مخزنك | Makhzanak v1",
+  "name": "مخزنك | Makhzanak v1 upload",
   "description": "Modern cloud-based accounting and inventory management platform with AI assistance.",
   "requestFramePermissions": [
-    "microphone"
+    "microphone",
+    "camera"
   ]
 }

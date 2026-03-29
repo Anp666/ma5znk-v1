@@ -216,7 +216,7 @@ export default function SettingsPage({ lang, profile }: Props) {
           {/* Security Settings */}
           <div className="bg-white dark:bg-zinc-900 p-10 rounded-[3rem] border border-zinc-200 dark:border-zinc-800 shadow-sm opacity-50 pointer-events-none">
             <h3 className="text-xl font-bold mb-8 flex items-center gap-3">
-              <Shield className="w-5 h-5 text-blue-600" />
+              <Shield className="w-5 h-5 text-primary" />
               {lang === 'ar' ? 'الأمان' : 'Security'}
             </h3>
             <p className="text-sm text-zinc-500 mb-6">Security settings are managed by Google Authentication.</p>

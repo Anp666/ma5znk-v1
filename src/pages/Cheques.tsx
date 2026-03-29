@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { getCollection, addToCollection, updateInCollection } from '../services/accountingService';
+import { getCollection, addToCollection, updateInCollection, recordCheque, clearCheque } from '../services/accountingService';
 import { translations } from '../translations';
-import { Cheque, Customer, Supplier, Account, TreasuryTransaction } from '../types';
+import { Cheque, Customer, Supplier, Account, TreasuryTransaction, Company } from '../types';
 import { toast } from 'react-hot-toast';
 import { 
   Plus, 
@@ -16,7 +16,8 @@ import {
   Calendar,
   User,
   ArrowUpRight,
-  ArrowDownLeft
+  ArrowDownLeft,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -30,6 +31,7 @@ const Cheques: React.FC<Props> = ({ lang }) => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'cleared' | 'rejected'>('all');
@@ -55,6 +57,7 @@ const Cheques: React.FC<Props> = ({ lang }) => {
     setCustomers(getCollection<Customer>('customers'));
     setSuppliers(getCollection<Supplier>('suppliers'));
     setAccounts(getCollection<Account>('accounts'));
+    setCompany(getCollection<Company>('companies')[0] || null);
     setLoading(false);
   };
 
@@ -66,6 +69,7 @@ const Cheques: React.FC<Props> = ({ lang }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!company) return;
     
     const entity = formData.type === 'incoming' 
       ? customers.find(c => c.id === formData.entityId)
@@ -81,10 +85,15 @@ const Cheques: React.FC<Props> = ({ lang }) => {
       if (editingCheque) {
         updateInCollection<Cheque>('cheques', editingCheque.id, data as any);
       } else {
-        addToCollection<Cheque>('cheques', {
+        const newCheque = {
           ...data,
+          id: Math.random().toString(36).substr(2, 9),
           createdAt: new Date().toISOString()
-        } as any);
+        };
+        addToCollection<Cheque>('cheques', newCheque as any);
+        
+        // Record in accounting
+        await recordCheque(company.id, newCheque);
       }
       setIsModalOpen(false);
       setEditingCheque(null);
@@ -101,42 +110,23 @@ const Cheques: React.FC<Props> = ({ lang }) => {
         notes: ''
       });
       loadData();
+      toast.success(lang === 'ar' ? 'تم حفظ الشيك' : 'Cheque saved');
     } catch (error) {
       console.error("Error saving cheque:", error);
+      toast.error(lang === 'ar' ? 'خطأ في حفظ الشيك' : 'Error saving cheque');
     }
   };
 
   const updateStatus = async (id: string, newStatus: 'cleared' | 'rejected') => {
+    if (!company) return;
     try {
-      const cheque = cheques.find(c => c.id === id);
-      if (!cheque) return;
-
-      updateInCollection<Cheque>('cheques', id, { 
-        status: newStatus,
-        updatedAt: new Date().toISOString()
-      } as any);
-
       if (newStatus === 'cleared') {
-        // Create treasury transaction
-        addToCollection<TreasuryTransaction>('treasury_transactions', {
-          type: cheque.type === 'incoming' ? 'income' : 'expense',
-          amount: cheque.amount,
-          date: new Date().toISOString().split('T')[0],
-          description: `${lang === 'ar' ? 'تحصيل شيك رقم' : 'Cheque clearance #'} ${cheque.number}`,
-          accountId: cheque.accountId,
-          category: 'cheque',
-          createdAt: new Date().toISOString()
+        await clearCheque(company.id, id);
+      } else {
+        updateInCollection<Cheque>('cheques', id, { 
+          status: newStatus,
+          updatedAt: new Date().toISOString()
         } as any);
-
-        // Update account balance
-        const account = accounts.find(a => a.id === cheque.accountId);
-        if (account) {
-          const currentBalance = account.balance || 0;
-          const newBalance = cheque.type === 'incoming' 
-            ? currentBalance + cheque.amount 
-            : currentBalance - cheque.amount;
-          updateInCollection<Account>('accounts', account.id, { balance: newBalance } as any);
-        }
       }
       
       loadData();
@@ -329,84 +319,106 @@ const Cheques: React.FC<Props> = ({ lang }) => {
       {/* Add/Edit Modal */}
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white dark:bg-zinc-900 rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-zinc-200 dark:border-zinc-800"
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                setIsModalOpen(false);
+                setEditingCheque(null);
+              }}
+              className="absolute inset-0 bg-zinc-950/60 backdrop-blur-xl" 
+            />
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="relative m-modal !max-w-lg flex flex-col"
             >
-              <h2 className="text-xl font-bold mb-6 text-zinc-900 dark:text-white">
-                {editingCheque ? (lang === 'ar' ? 'تعديل شيك' : 'Edit Cheque') : (lang === 'ar' ? 'إضافة شيك جديد' : 'Add New Cheque')}
-              </h2>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-zinc-500">{lang === 'ar' ? 'رقم الشيك' : 'Cheque Number'}</label>
+              <div className="flex items-center justify-between p-8 border-b border-zinc-100 dark:border-zinc-800">
+                <h2 className="text-2xl font-bold text-zinc-900 dark:text-white">
+                  {editingCheque ? (lang === 'ar' ? 'تعديل شيك' : 'Edit Cheque') : (lang === 'ar' ? 'إضافة شيك جديد' : 'Add New Cheque')}
+                </h2>
+                <button 
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    setEditingCheque(null);
+                  }}
+                  className="p-3 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-2xl hover:bg-zinc-200 transition-all"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 space-y-6">
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">{lang === 'ar' ? 'رقم الشيك' : 'Cheque Number'}</label>
                     <input
                       required
                       type="text"
                       value={formData.number}
                       onChange={(e) => setFormData({ ...formData, number: e.target.value })}
-                      className="w-full px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-zinc-500"
+                      className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-4 focus:ring-primary/10 transition-all"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-zinc-500">{lang === 'ar' ? 'البنك' : 'Bank'}</label>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">{lang === 'ar' ? 'البنك' : 'Bank'}</label>
                     <input
                       required
                       type="text"
                       value={formData.bank}
                       onChange={(e) => setFormData({ ...formData, bank: e.target.value })}
-                      className="w-full px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-zinc-500"
+                      className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-4 focus:ring-primary/10 transition-all"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-zinc-500">{lang === 'ar' ? 'المبلغ' : 'Amount'}</label>
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">{lang === 'ar' ? 'المبلغ' : 'Amount'}</label>
                     <input
                       required
                       type="number"
                       value={formData.amount}
                       onChange={(e) => setFormData({ ...formData, amount: Number(e.target.value) })}
-                      className="w-full px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-zinc-500"
+                      className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-4 focus:ring-primary/10 transition-all font-bold"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-zinc-500">{lang === 'ar' ? 'تاريخ الاستحقاق' : 'Due Date'}</label>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">{lang === 'ar' ? 'تاريخ الاستحقاق' : 'Due Date'}</label>
                     <input
                       required
                       type="date"
                       value={formData.dueDate}
                       onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                      className="w-full px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-zinc-500"
+                      className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-4 focus:ring-primary/10 transition-all"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-zinc-500">{lang === 'ar' ? 'النوع' : 'Type'}</label>
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">{lang === 'ar' ? 'النوع' : 'Type'}</label>
                     <select
                       value={formData.type}
                       onChange={(e) => setFormData({ ...formData, type: e.target.value as any, entityId: '' })}
-                      className="w-full px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-zinc-500"
+                      className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-4 focus:ring-primary/10 transition-all"
                     >
                       <option value="incoming">{lang === 'ar' ? 'وارد (من عميل)' : 'Incoming (from Customer)'}</option>
                       <option value="outgoing">{lang === 'ar' ? 'صادر (إلى مورد)' : 'Outgoing (to Supplier)'}</option>
                     </select>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-sm font-medium text-zinc-500">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">
                       {formData.type === 'incoming' ? (lang === 'ar' ? 'العميل' : 'Customer') : (lang === 'ar' ? 'المورد' : 'Supplier')}
                     </label>
                     <select
                       required
                       value={formData.entityId}
                       onChange={(e) => setFormData({ ...formData, entityId: e.target.value })}
-                      className="w-full px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-zinc-500"
+                      className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-4 focus:ring-primary/10 transition-all"
                     >
                       <option value="">{lang === 'ar' ? 'اختر...' : 'Select...'}</option>
                       {formData.type === 'incoming' 
@@ -417,13 +429,13 @@ const Cheques: React.FC<Props> = ({ lang }) => {
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-zinc-500">{lang === 'ar' ? 'الحساب (خزينة/بنك)' : 'Account (Treasury/Bank)'}</label>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-zinc-500 uppercase tracking-widest">{lang === 'ar' ? 'الحساب (خزينة/بنك)' : 'Account (Treasury/Bank)'}</label>
                   <select
                     required
                     value={formData.accountId}
                     onChange={(e) => setFormData({ ...formData, accountId: e.target.value })}
-                    className="w-full px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-2 focus:ring-zinc-500"
+                    className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 outline-none focus:ring-4 focus:ring-primary/10 transition-all"
                   >
                     <option value="">{lang === 'ar' ? 'اختر الحساب...' : 'Select Account...'}</option>
                     {accounts.filter(a => a.type === 'Asset').map(a => (
@@ -435,14 +447,17 @@ const Cheques: React.FC<Props> = ({ lang }) => {
                 <div className="flex gap-3 pt-4">
                   <button
                     type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="flex-1 py-3 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-2xl font-bold hover:bg-zinc-200 transition-all"
+                    onClick={() => {
+                      setIsModalOpen(false);
+                      setEditingCheque(null);
+                    }}
+                    className="flex-1 py-4 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-2xl font-bold hover:bg-zinc-200 transition-all"
                   >
                     {lang === 'ar' ? 'إلغاء' : 'Cancel'}
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 py-3 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 rounded-2xl font-bold hover:opacity-90 transition-all"
+                    className="flex-1 py-4 bg-primary text-white rounded-2xl font-bold hover:bg-primary-hover shadow-lg shadow-primary/20 transition-all"
                   >
                     {editingCheque ? (lang === 'ar' ? 'حفظ التعديلات' : 'Save Changes') : (lang === 'ar' ? 'إضافة الشيك' : 'Add Cheque')}
                   </button>

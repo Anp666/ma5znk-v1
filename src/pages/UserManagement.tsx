@@ -264,106 +264,114 @@ export default function UserManagement({ lang, profile: currentProfile }: Props)
               className="absolute inset-0 bg-zinc-950/60 backdrop-blur-xl" 
             />
             <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 40 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 40 }}
-              className="relative w-full max-w-lg bg-white dark:bg-zinc-900 rounded-[3rem] p-10 shadow-2xl border border-zinc-200 dark:border-zinc-800 max-h-[90vh] overflow-y-auto"
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              className="relative m-modal !max-w-lg"
             >
-              <h3 className="text-3xl font-black mb-8 tracking-tighter">{formData.uid ? (lang === 'ar' ? 'تعديل مستخدم' : 'Edit User') : t.addUser}</h3>
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-3 ml-2">{t.name}</label>
-                    <input 
-                      type="text" 
-                      required
-                      value={formData.displayName}
-                      onChange={e => setFormData({ ...formData, displayName: e.target.value })}
-                      className="w-full px-6 py-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-2xl outline-none font-bold focus:ring-4 ring-primary/10 transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-3 ml-2">{t.email}</label>
-                    <input 
-                      type="email" 
-                      required
-                      value={formData.email}
-                      onChange={e => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full px-6 py-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-2xl outline-none font-bold focus:ring-4 ring-primary/10 transition-all"
-                    />
-                  </div>
+              <div className="p-8">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-3xl font-black tracking-tighter">{formData.uid ? (lang === 'ar' ? 'تعديل مستخدم' : 'Edit User') : t.addUser}</h3>
+                  <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
+                    <X className="w-6 h-6" />
+                  </button>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-3 ml-2">{t.phoneNumber}</label>
-                    <input 
-                      type="tel" 
-                      value={formData.phoneNumber || ''}
-                      onChange={e => setFormData({ ...formData, phoneNumber: e.target.value })}
-                      className="w-full px-6 py-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-2xl outline-none font-bold focus:ring-4 ring-primary/10 transition-all"
-                    />
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{t.name}</label>
+                      <input 
+                        type="text" 
+                        required
+                        value={formData.displayName}
+                        onChange={e => setFormData({ ...formData, displayName: e.target.value })}
+                        className="m-input"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{t.email}</label>
+                      <input 
+                        type="email" 
+                        required
+                        value={formData.email}
+                        onChange={e => setFormData({ ...formData, email: e.target.value })}
+                        className="m-input"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-3 ml-2">{t.password}</label>
-                    <input 
-                      type="password" 
-                      required={!formData.uid}
-                      value={formData.password || ''}
-                      onChange={e => setFormData({ ...formData, password: e.target.value })}
-                      className="w-full px-6 py-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-2xl outline-none font-bold focus:ring-4 ring-primary/10 transition-all"
-                    />
-                  </div>
-                </div>
 
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-3 ml-2">{t.role}</label>
-                  <div className="grid grid-cols-1 gap-3">
-                    {(['admin', 'accountant', 'cashier'] as UserRole[]).map(role => (
-                      <button
-                        key={role}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, role })}
-                        className={`flex items-center justify-between p-5 rounded-2xl border-2 transition-all ${
-                          formData.role === role 
-                            ? 'border-primary bg-primary/5 text-primary' 
-                            : 'border-zinc-100 dark:border-zinc-800 hover:border-primary/30'
-                        }`}
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                            formData.role === role ? 'bg-primary text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400'
-                          }`}>
-                            {role === 'admin' ? <Shield className="w-5 h-5" /> : role === 'accountant' ? <UserCheck className="w-5 h-5" /> : <UserMinus className="w-5 h-5" />}
-                          </div>
-                          <div className="text-left">
-                            <div className="font-black text-sm">{t[role as keyof typeof t] || role}</div>
-                            <div className="text-[10px] font-bold opacity-60 uppercase tracking-widest">
-                              {role === 'admin' ? 'Full Access' : role === 'accountant' ? 'Financial Access' : 'Sales Only'}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{t.phoneNumber}</label>
+                      <input 
+                        type="tel" 
+                        value={formData.phoneNumber || ''}
+                        onChange={e => setFormData({ ...formData, phoneNumber: e.target.value })}
+                        className="m-input"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{t.password}</label>
+                      <input 
+                        type="password" 
+                        required={!formData.uid}
+                        value={formData.password || ''}
+                        onChange={e => setFormData({ ...formData, password: e.target.value })}
+                        className="m-input"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{t.role}</label>
+                    <div className="grid grid-cols-1 gap-3">
+                      {(['admin', 'accountant', 'cashier'] as UserRole[]).map(role => (
+                        <button
+                          key={role}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, role })}
+                          className={`flex items-center justify-between p-5 rounded-2xl border-2 transition-all ${
+                            formData.role === role 
+                              ? 'border-primary bg-primary/5 text-primary' 
+                              : 'border-zinc-100 dark:border-zinc-800 hover:border-primary/30'
+                          }`}
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                              formData.role === role ? 'bg-primary text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400'
+                            }`}>
+                              {role === 'admin' ? <Shield className="w-5 h-5" /> : role === 'accountant' ? <UserCheck className="w-5 h-5" /> : <UserMinus className="w-5 h-5" />}
+                            </div>
+                            <div className="text-left">
+                              <div className="font-black text-sm">{t[role as keyof typeof t] || role}</div>
+                              <div className="text-[10px] font-bold opacity-60 uppercase tracking-widest">
+                                {role === 'admin' ? 'Full Access' : role === 'accountant' ? 'Financial Access' : 'Sales Only'}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        {formData.role === role && <div className="w-3 h-3 bg-primary rounded-full shadow-lg shadow-primary/50" />}
-                      </button>
-                    ))}
+                          {formData.role === role && <div className="w-3 h-3 bg-primary rounded-full shadow-lg shadow-primary/50" />}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-                <div className="flex gap-4 pt-6">
-                  <button 
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="flex-1 py-5 bg-zinc-100 dark:bg-zinc-800 rounded-2xl font-black text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 transition-all active:scale-95"
-                  >
-                    {lang === 'ar' ? 'إلغاء' : 'Cancel'}
-                  </button>
-                  <button 
-                    type="submit"
-                    className="flex-1 py-5 bg-primary text-white rounded-2xl font-black shadow-xl shadow-primary/20 hover:bg-primary-hover transition-all active:scale-95"
-                  >
-                    {lang === 'ar' ? 'حفظ التغييرات' : 'Save Changes'}
-                  </button>
-                </div>
-              </form>
+
+                  <div className="flex gap-4 pt-6">
+                    <button 
+                      type="button"
+                      onClick={() => setIsModalOpen(false)}
+                      className="flex-1 py-5 bg-zinc-100 dark:bg-zinc-800 rounded-2xl font-black text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 transition-all active:scale-95"
+                    >
+                      {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                    </button>
+                    <button 
+                      type="submit"
+                      className="flex-1 py-5 bg-primary text-white rounded-2xl font-black shadow-xl shadow-primary/20 hover:bg-primary-hover transition-all active:scale-95"
+                    >
+                      {lang === 'ar' ? 'حفظ التغييرات' : 'Save Changes'}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </motion.div>
           </div>
         )}

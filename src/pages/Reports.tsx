@@ -12,6 +12,7 @@ import {
   Eye,
   X
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { getCollection } from '../services/accountingService';
 import { Product, Invoice, Account, Customer } from '../types';
 import { translations } from '../translations';
@@ -250,7 +251,7 @@ export default function Reports({ lang, profile }: Props) {
     doc.rect(0, 0, pageWidth, 50, 'F');
     
     // Logo Placeholder
-    doc.setFillColor(37, 99, 235); // Blue-600
+    doc.setFillColor(16, 185, 129); // Emerald-600
     doc.roundedRect(margin, 15, 20, 20, 4, 4, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFont('Cairo', 'bold');
@@ -284,7 +285,7 @@ export default function Reports({ lang, profile }: Props) {
       body: processedBody,
       startY: 60,
       styles: { font: 'Cairo', fontSize: 10, halign: isAr ? 'right' : 'left', cellPadding: 5 },
-      headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255], fontStyle: 'bold', halign: isAr ? 'right' : 'left' },
+      headStyles: { fillColor: [16, 185, 129], textColor: [255, 255, 255], fontStyle: 'bold', halign: isAr ? 'right' : 'left' },
       alternateRowStyles: { fillColor: [248, 250, 252] },
       margin: { left: margin, right: margin },
     });
@@ -451,7 +452,7 @@ export default function Reports({ lang, profile }: Props) {
         {/* Inventory Report Card */}
         <div className="bg-white dark:bg-zinc-900 p-8 rounded-[2.5rem] border border-zinc-200 dark:border-zinc-800 shadow-sm">
           <div className="flex items-center gap-4 mb-6">
-            <div className="p-3 bg-blue-100 text-blue-600 rounded-2xl">
+            <div className="p-3 bg-emerald-100 text-emerald-600 rounded-2xl">
               <Package className="w-6 h-6" />
             </div>
             <h3 className="text-xl font-bold">{lang === 'ar' ? 'تقرير المخزون' : 'Inventory Report'}</h3>
@@ -487,7 +488,7 @@ export default function Reports({ lang, profile }: Props) {
             </button>
             <button 
               onClick={exportInventoryReportPDF}
-              className="flex-1 py-3 bg-blue-600 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-700 transition-all"
+              className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all"
             >
               <Download className="w-4 h-4" />
               PDF
@@ -498,7 +499,7 @@ export default function Reports({ lang, profile }: Props) {
         {/* Profit Report Card */}
         <div className="bg-white dark:bg-zinc-900 p-8 rounded-[2.5rem] border border-zinc-200 dark:border-zinc-800 shadow-sm">
           <div className="flex items-center gap-4 mb-6">
-            <div className="p-3 bg-violet-100 text-violet-600 rounded-2xl">
+            <div className="p-3 bg-emerald-100 text-emerald-600 rounded-2xl">
               <TrendingDown className="w-6 h-6" />
             </div>
             <h3 className="text-xl font-bold">{lang === 'ar' ? 'تقرير الأرباح' : 'Profit Report'}</h3>
@@ -538,7 +539,7 @@ export default function Reports({ lang, profile }: Props) {
               <Eye className="w-4 h-4" />
               {lang === 'ar' ? 'عرض' : 'View'}
             </button>
-            <button className="flex-1 py-3 bg-violet-600 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-violet-700 transition-all">
+            <button className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all">
               <Download className="w-4 h-4" />
               {lang === 'ar' ? 'تصدير' : 'Export'}
             </button>
@@ -689,60 +690,74 @@ export default function Reports({ lang, profile }: Props) {
       </div>
 
       {/* Report Viewer Modal */}
-      {viewingReport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-zinc-900 rounded-[2.5rem] w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-            <div className="p-8 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
-              <div>
-                <h3 className="text-2xl font-bold">{viewingReport.title}</h3>
-                <p className="text-sm text-zinc-500 mt-1">
-                  {lang === 'ar' ? 'تاريخ التقرير:' : 'Report Date:'} {new Date().toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US')}
-                </p>
+      <AnimatePresence>
+        {viewingReport && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setViewingReport(null)}
+              className="absolute inset-0 bg-zinc-950/60 backdrop-blur-xl" 
+            />
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="relative m-modal !max-w-6xl !h-[90vh] flex flex-col"
+            >
+              <div className="p-8 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+                <div>
+                  <h3 className="text-2xl font-bold">{viewingReport.title}</h3>
+                  <p className="text-sm text-zinc-500 mt-1">
+                    {lang === 'ar' ? 'تاريخ التقرير:' : 'Report Date:'} {new Date().toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US')}
+                  </p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <button 
+                    onClick={() => exportToExcel(viewingReport.title, viewingReport.headers, viewingReport.data)}
+                    className="px-6 py-3 bg-emerald-50 text-emerald-600 rounded-2xl font-bold text-sm hover:bg-emerald-100 transition-all flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Excel
+                  </button>
+                  <button 
+                    onClick={() => setViewingReport(null)}
+                    className="p-3 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-2xl hover:bg-zinc-200 transition-all"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-4">
-                <button 
-                  onClick={() => exportToExcel(viewingReport.title, viewingReport.headers, viewingReport.data)}
-                  className="px-6 py-3 bg-emerald-50 text-emerald-600 rounded-2xl font-bold text-sm hover:bg-emerald-100 transition-all flex items-center gap-2"
-                >
-                  <Download className="w-4 h-4" />
-                  Excel
-                </button>
-                <button 
-                  onClick={() => setViewingReport(null)}
-                  className="p-3 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-2xl hover:bg-zinc-200 transition-all"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-            </div>
-            
-            <div className="flex-1 overflow-auto p-8">
-              <table className="w-full text-sm text-left rtl:text-right border-collapse">
-                <thead className="sticky top-0 bg-zinc-50 dark:bg-zinc-800 z-10">
-                  <tr>
-                    {viewingReport.headers.map((header, i) => (
-                      <th key={i} className="px-6 py-4 font-black text-zinc-400 uppercase tracking-widest text-[10px] border-b border-zinc-100 dark:border-zinc-700">
-                        {header}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                  {viewingReport.data.map((row, i) => (
-                    <tr key={i} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
-                      {row.map((cell, j) => (
-                        <td key={j} className="px-6 py-4 font-medium text-zinc-900 dark:text-zinc-100">
-                          {cell}
-                        </td>
+              
+              <div className="flex-1 overflow-auto p-8">
+                <table className="w-full text-sm text-left rtl:text-right border-collapse">
+                  <thead className="sticky top-0 bg-zinc-50 dark:bg-zinc-800 z-10">
+                    <tr>
+                      {viewingReport.headers.map((header, i) => (
+                        <th key={i} className="px-6 py-4 font-black text-zinc-400 uppercase tracking-widest text-[10px] border-b border-zinc-100 dark:border-zinc-700">
+                          {header}
+                        </th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                    {viewingReport.data.map((row, i) => (
+                      <tr key={i} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                        {row.map((cell, j) => (
+                          <td key={j} className="px-6 py-4 font-medium text-zinc-900 dark:text-zinc-100">
+                            {cell}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 }

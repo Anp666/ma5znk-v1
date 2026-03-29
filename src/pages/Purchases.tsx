@@ -385,7 +385,7 @@ export default function Purchases({ lang, profile }: Props) {
       {/* Purchase Modal */}
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center md:p-6 no-print">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 no-print">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -394,10 +394,10 @@ export default function Purchases({ lang, profile }: Props) {
               className="absolute inset-0 bg-zinc-950/60 backdrop-blur-xl" 
             />
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full h-full md:h-[90vh] md:max-w-[1200px] bg-white dark:bg-zinc-900 md:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col md:flex-row border border-zinc-200 dark:border-zinc-800"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="relative m-modal !max-w-[1200px] !h-[90vh] flex flex-col md:flex-row"
             >
               {/* LEFT SIDE: Product Selection */}
               <div className="flex-1 flex flex-col h-full overflow-hidden bg-zinc-50/50 dark:bg-zinc-900/50">
@@ -421,7 +421,7 @@ export default function Purchases({ lang, profile }: Props) {
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6 md:p-10 pt-4 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto p-6 md:p-10 pt-4">
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
                     {filteredProducts.map(product => (
                       <div 
@@ -501,7 +501,7 @@ export default function Purchases({ lang, profile }: Props) {
                 </div>
 
                 <div className="flex-1 bg-zinc-50 dark:bg-zinc-800/50 rounded-[2rem] p-6 flex flex-col overflow-hidden border border-zinc-100 dark:border-zinc-800/50">
-                  <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar mb-6">
+                  <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-6">
                     {cart.map(item => (
                       <div key={item.id} className="flex justify-between items-start gap-4">
                         <div className="flex-1">

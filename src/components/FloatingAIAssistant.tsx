@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Sparkles, Loader2, BarChart2, X, MessageSquare, ChevronDown, Maximize2, Minimize2, TrendingUp, Package, Wallet } from 'lucide-react';
+import { Send, Bot, User, Sparkles, Loader2, BarChart2, X, MessageSquare, ChevronDown, Maximize2, Minimize2, TrendingUp, Package, Wallet, Mic, MicOff } from 'lucide-react';
 import { generateFinancialResponse, financialTools } from '../services/gemini';
 import { translations } from '../translations';
 import ReactMarkdown from 'react-markdown';
@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { getCollection } from '../services/accountingService';
 import { Invoice } from '../types';
 import toast from 'react-hot-toast';
+import { useVoiceInput } from '../hooks/useVoiceInput';
 import { 
   BarChart, 
   Bar, 
@@ -39,6 +40,13 @@ export default function FloatingAIAssistant({ lang, profile }: Props) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { isListening, transcript, startListening, stopListening } = useVoiceInput(lang);
+
+  useEffect(() => {
+    if (transcript) {
+      setInput(prev => prev + ' ' + transcript);
+    }
+  }, [transcript]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -73,11 +81,36 @@ export default function FloatingAIAssistant({ lang, profile }: Props) {
           const transactions = getCollection('transactions');
           return transactions.slice(0, args.limit || 20);
         }
+        case 'get_customers_data': {
+          return getCollection('customers');
+        }
+        case 'get_suppliers_data': {
+          return getCollection('suppliers');
+        }
+        case 'get_purchases_data': {
+          let invoices = getCollection('invoices').filter((inv: any) => inv.type === 'purchase');
+          if (args.period && args.period !== 'all') {
+            const now = new Date();
+            let startDate = new Date();
+            if (args.period === 'today') startDate.setHours(0, 0, 0, 0);
+            if (args.period === 'this_week') startDate.setDate(now.getDate() - 7);
+            if (args.period === 'this_month') startDate.setMonth(now.getMonth() - 1);
+            invoices = invoices.filter((inv: any) => new Date(inv.date) >= startDate);
+          }
+          return invoices;
+        }
         case 'get_reports_summary': {
           const invoices = getCollection<Invoice>('invoices');
           const sales = invoices.filter((inv: Invoice) => inv.type === 'sales').reduce((sum: number, inv: Invoice) => sum + inv.total, 0);
           const purchases = invoices.filter((inv: Invoice) => inv.type === 'purchase').reduce((sum: number, inv: Invoice) => sum + inv.total, 0);
           return { totalSales: sales, totalPurchases: purchases, estimatedProfit: sales - purchases };
+        }
+        case 'get_accounts_data': {
+          return getCollection<any>('accounts');
+        }
+        case 'get_journal_entries_data': {
+          const entries = getCollection<any>('journal_entries');
+          return entries.slice(-(args.limit || 10));
         }
         default: return { error: 'Tool not found' };
       }
@@ -231,21 +264,34 @@ export default function FloatingAIAssistant({ lang, profile }: Props) {
 
                 {/* Input */}
                 <div className="p-4 border-t border-[var(--color-border-light)] dark:border-[var(--color-border-dark)]">
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder={lang === 'ar' ? 'اسألني أي شيء...' : 'Ask me anything...'}
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                      className="w-full pl-4 pr-12 py-3 bg-[var(--color-card-light)] dark:bg-[var(--color-card-dark)] border border-[var(--color-border-light)] dark:border-[var(--color-border-dark)] rounded-xl text-sm focus:ring-2 ring-[var(--color-primary)]/20 outline-none"
-                    />
-                    <button 
-                      onClick={() => handleSend()}
-                      disabled={isLoading}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-[var(--color-primary)] text-white rounded-lg flex items-center justify-center disabled:opacity-50 hover:bg-[var(--color-primary-hover)] transition-colors"
+                  <div className="relative flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        placeholder={lang === 'ar' ? 'اسألني أي شيء...' : 'Ask me anything...'}
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                        className="w-full pl-4 pr-12 py-3 bg-[var(--color-card-light)] dark:bg-[var(--color-card-dark)] border border-[var(--color-border-light)] dark:border-[var(--color-border-dark)] rounded-xl text-sm focus:ring-2 ring-[var(--color-primary)]/20 outline-none"
+                      />
+                      <button 
+                        onClick={() => handleSend()}
+                        disabled={isLoading}
+                        className={`absolute ${lang === 'ar' ? 'left-2' : 'right-2'} top-1/2 -translate-y-1/2 w-8 h-8 bg-[var(--color-primary)] text-white rounded-lg flex items-center justify-center disabled:opacity-50 hover:bg-[var(--color-primary-hover)] transition-colors`}
+                      >
+                        <Send className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <button
+                      onClick={isListening ? stopListening : startListening}
+                      className={`p-3 rounded-xl transition-all ${
+                        isListening 
+                          ? 'bg-red-500 text-white animate-pulse' 
+                          : 'bg-[var(--color-card-light)] dark:bg-[var(--color-card-dark)] text-[var(--color-text-secondary-light)] dark:text-[var(--color-text-secondary-dark)] border border-[var(--color-border-light)] dark:border-[var(--color-border-dark)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]'
+                      }`}
+                      title={lang === 'ar' ? 'تحدث' : 'Speak'}
                     >
-                      <Send className="w-4 h-4" />
+                      {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                     </button>
                   </div>
                 </div>

@@ -41,7 +41,9 @@ export const ensureSystemAccounts = async (companyId: string) => {
     { code: '1100', name: 'Cash', type: 'Asset' },
     { code: '1200', name: 'Accounts Receivable', type: 'Asset' },
     { code: '1300', name: 'Inventory', type: 'Asset' },
+    { code: '1400', name: 'Notes Receivable', type: 'Asset' },
     { code: '2100', name: 'Accounts Payable', type: 'Liability' },
+    { code: '2200', name: 'Notes Payable', type: 'Liability' },
     { code: '4100', name: 'Sales Revenue', type: 'Revenue' },
     { code: '5100', name: 'Cost of Goods Sold', type: 'Expense' },
   ];
@@ -188,7 +190,10 @@ export const recordSalesInvoice = async (
   cashAccountId?: string
 ) => {
   const revenueAccount = await findAccount(companyId, { name: 'Sales Revenue', type: 'Revenue' });
-  if (!revenueAccount) throw new Error('Revenue account not found.');
+  const inventoryAccount = await findAccount(companyId, { name: 'Inventory', type: 'Asset' });
+  const cogsAccount = await findAccount(companyId, { name: 'Cost of Goods Sold', type: 'Expense' });
+  
+  if (!revenueAccount || !inventoryAccount || !cogsAccount) throw new Error('System accounts not found.');
 
   let debitAccountId = cashAccountId;
   if (!debitAccountId) {
@@ -197,35 +202,40 @@ export const recordSalesInvoice = async (
     debitAccountId = arAccount.id;
   }
 
-  const accounts = getCollection<Account>('accounts');
-  const debitAccIndex = accounts.findIndex((a: any) => a.id === debitAccountId);
-  const revenueAccIndex = accounts.findIndex((a: any) => a.id === revenueAccount.id);
+  // 1. Update Product Quantities and Calculate COGS
+  const products = getCollection<Product>('products');
+  let totalCost = 0;
+  
+  invoice.items.forEach((item: any) => {
+    const productIndex = products.findIndex((p: any) => p.id === item.productId);
+    if (productIndex !== -1) {
+      const product = products[productIndex];
+      totalCost += (product.purchasePrice || 0) * item.quantity;
+      products[productIndex].quantity -= item.quantity;
+    }
+  });
+  saveCollection('products', products);
 
-  if (debitAccIndex === -1 || revenueAccIndex === -1) throw new Error("Accounts not found");
+  // 2. Record Revenue and Payment/AR
+  await createAccountingEntry(companyId, debitAccountId, invoice.total, 'debit', `Sales Invoice ${invoice.number}`, invoice.id);
+  await createAccountingEntry(companyId, revenueAccount.id, invoice.total, 'credit', `Sales Invoice ${invoice.number}`, invoice.id);
 
-  // Update Balances
-  accounts[debitAccIndex].balance += invoice.total;
-  accounts[revenueAccIndex].balance += invoice.total;
-  saveCollection('accounts', accounts);
+  // 3. Record COGS and Inventory reduction
+  if (totalCost > 0) {
+    await createAccountingEntry(companyId, cogsAccount.id, totalCost, 'debit', `COGS for Invoice ${invoice.number}`, invoice.id);
+    await createAccountingEntry(companyId, inventoryAccount.id, totalCost, 'credit', `Inventory reduction for Invoice ${invoice.number}`, invoice.id);
+  }
 
+  // 4. Update Customer Balance if AR
   if (!cashAccountId && invoice.customerId) {
-    const customers = getCollection<any>('customers');
+    const customers = getCollection<Customer>('customers');
     const customerIndex = customers.findIndex((c: any) => c.id === invoice.customerId);
     if (customerIndex !== -1) {
-      customers[customerIndex].balance += invoice.total;
-      customers[customerIndex].totalPurchases += invoice.total;
+      customers[customerIndex].balance = (customers[customerIndex].balance || 0) + invoice.total;
+      customers[customerIndex].totalPurchases = (customers[customerIndex].totalPurchases || 0) + invoice.total;
       saveCollection('customers', customers);
     }
   }
-
-  addToCollection<Transaction>('transactions', {
-    companyId,
-    date: new Date().toISOString(),
-    type: 'Sales Invoice' as any,
-    description: `Invoice ${invoice.number}`,
-    amount: invoice.total,
-    invoiceId: invoice.id
-  } as any);
 
   await logAction({
     userId: 'system',
@@ -233,7 +243,7 @@ export const recordSalesInvoice = async (
     userName: 'System',
     action: 'RECORD_SALES_INVOICE',
     module: 'Sales',
-    details: `Invoice ${invoice.number} - Total: SAR ${invoice.total}`
+    details: `Invoice ${invoice.number} - Total: SAR ${invoice.total}, COGS: SAR ${totalCost}`
   });
 };
 
@@ -252,33 +262,31 @@ export const recordPurchaseInvoice = async (
     creditAccountId = apAccount.id;
   }
 
-  const accounts = getCollection<Account>('accounts');
-  const inventoryAccIndex = accounts.findIndex((a: any) => a.id === inventoryAccount.id);
-  const creditAccIndex = accounts.findIndex((a: any) => a.id === creditAccountId);
+  // 1. Update Product Quantities and Purchase Prices
+  const products = getCollection<Product>('products');
+  invoice.items.forEach((item: any) => {
+    const productIndex = products.findIndex((p: any) => p.id === item.productId);
+    if (productIndex !== -1) {
+      products[productIndex].quantity += item.quantity;
+      // Optionally update cost price based on latest purchase
+      products[productIndex].purchasePrice = item.price;
+    }
+  });
+  saveCollection('products', products);
 
-  if (inventoryAccIndex === -1 || creditAccIndex === -1) throw new Error("Accounts not found");
+  // 2. Record Inventory and Payment/AP
+  await createAccountingEntry(companyId, inventoryAccount.id, invoice.total, 'debit', `Purchase Invoice ${invoice.number}`, invoice.id);
+  await createAccountingEntry(companyId, creditAccountId, invoice.total, 'credit', `Purchase Invoice ${invoice.number}`, invoice.id);
 
-  accounts[inventoryAccIndex].balance += invoice.total;
-  accounts[creditAccIndex].balance += invoice.total;
-  saveCollection('accounts', accounts);
-
+  // 3. Update Supplier Balance if AP
   if (!cashAccountId && invoice.supplierId) {
-    const suppliers = getCollection<any>('suppliers');
+    const suppliers = getCollection<Supplier>('suppliers');
     const supplierIndex = suppliers.findIndex((s: any) => s.id === invoice.supplierId);
     if (supplierIndex !== -1) {
-      suppliers[supplierIndex].balance += invoice.total;
+      suppliers[supplierIndex].balance = (suppliers[supplierIndex].balance || 0) + invoice.total;
       saveCollection('suppliers', suppliers);
     }
   }
-
-  addToCollection<Transaction>('transactions', {
-    companyId,
-    date: new Date().toISOString(),
-    type: 'Purchase Invoice' as any,
-    description: `Purchase Invoice ${invoice.number}`,
-    amount: invoice.total,
-    invoiceId: invoice.id
-  } as any);
 
   await logAction({
     userId: 'system',
@@ -287,6 +295,108 @@ export const recordPurchaseInvoice = async (
     action: 'RECORD_PURCHASE_INVOICE',
     module: 'Purchases',
     details: `Purchase Invoice ${invoice.number} - Total: SAR ${invoice.total}`
+  });
+};
+
+export const recordSalesReturn = async (
+  companyId: string,
+  returnData: any
+) => {
+  const revenueAccount = await findAccount(companyId, { name: 'Sales Revenue', type: 'Revenue' });
+  const inventoryAccount = await findAccount(companyId, { name: 'Inventory', type: 'Asset' });
+  const cogsAccount = await findAccount(companyId, { name: 'Cost of Goods Sold', type: 'Expense' });
+  const arAccount = await findAccount(companyId, { name: 'Accounts Receivable', type: 'Asset' });
+  
+  if (!revenueAccount || !inventoryAccount || !cogsAccount || !arAccount) throw new Error('System accounts not found.');
+
+  // 1. Update Product Quantities and Calculate COGS to reverse
+  const products = getCollection<Product>('products');
+  let totalCostToReverse = 0;
+  
+  returnData.items.forEach((item: any) => {
+    const productIndex = products.findIndex((p: any) => p.id === item.productId);
+    if (productIndex !== -1) {
+      const product = products[productIndex];
+      totalCostToReverse += (product.purchasePrice || 0) * item.quantity;
+      products[productIndex].quantity += item.quantity;
+    }
+  });
+  saveCollection('products', products);
+
+  // 2. Reverse Revenue and AR
+  await createAccountingEntry(companyId, revenueAccount.id, returnData.totalAmount, 'debit', `Sales Return for Invoice ${returnData.invoiceNumber}`, returnData.id);
+  await createAccountingEntry(companyId, arAccount.id, returnData.totalAmount, 'credit', `Sales Return for Invoice ${returnData.invoiceNumber}`, returnData.id);
+
+  // 3. Reverse COGS and Inventory
+  if (totalCostToReverse > 0) {
+    await createAccountingEntry(companyId, inventoryAccount.id, totalCostToReverse, 'debit', `Inventory reversal for Return ${returnData.id}`, returnData.id);
+    await createAccountingEntry(companyId, cogsAccount.id, totalCostToReverse, 'credit', `COGS reversal for Return ${returnData.id}`, returnData.id);
+  }
+
+  // 4. Update Customer Balance
+  const invoices = getCollection<Invoice>('invoices');
+  const originalInvoice = invoices.find(inv => inv.id === returnData.invoiceId);
+  if (originalInvoice?.customerId) {
+    const customers = getCollection<Customer>('customers');
+    const customerIndex = customers.findIndex((c: any) => c.id === originalInvoice.customerId);
+    if (customerIndex !== -1) {
+      customers[customerIndex].balance -= returnData.totalAmount;
+      saveCollection('customers', customers);
+    }
+  }
+
+  await logAction({
+    userId: 'system',
+    companyId,
+    userName: 'System',
+    action: 'RECORD_SALES_RETURN',
+    module: 'Returns',
+    details: `Sales Return for Invoice ${returnData.invoiceNumber} - Total: SAR ${returnData.totalAmount}`
+  });
+};
+
+export const recordPurchaseReturn = async (
+  companyId: string,
+  returnData: any
+) => {
+  const inventoryAccount = await findAccount(companyId, { name: 'Inventory', type: 'Asset' });
+  const apAccount = await findAccount(companyId, { name: 'Accounts Payable', type: 'Liability' });
+  
+  if (!inventoryAccount || !apAccount) throw new Error('System accounts not found.');
+
+  // 1. Update Product Quantities
+  const products = getCollection<Product>('products');
+  returnData.items.forEach((item: any) => {
+    const productIndex = products.findIndex((p: any) => p.id === item.productId);
+    if (productIndex !== -1) {
+      products[productIndex].quantity -= item.quantity;
+    }
+  });
+  saveCollection('products', products);
+
+  // 2. Reverse Inventory and AP
+  await createAccountingEntry(companyId, apAccount.id, returnData.totalAmount, 'debit', `Purchase Return for Invoice ${returnData.invoiceNumber}`, returnData.id);
+  await createAccountingEntry(companyId, inventoryAccount.id, returnData.totalAmount, 'credit', `Purchase Return for Invoice ${returnData.invoiceNumber}`, returnData.id);
+
+  // 3. Update Supplier Balance
+  const invoices = getCollection<Invoice>('invoices');
+  const originalInvoice = invoices.find(inv => inv.id === returnData.invoiceId);
+  if (originalInvoice?.supplierId) {
+    const suppliers = getCollection<Supplier>('suppliers');
+    const supplierIndex = suppliers.findIndex((s: any) => s.id === originalInvoice.supplierId);
+    if (supplierIndex !== -1) {
+      suppliers[supplierIndex].balance -= returnData.totalAmount;
+      saveCollection('suppliers', suppliers);
+    }
+  }
+
+  await logAction({
+    userId: 'system',
+    companyId,
+    userName: 'System',
+    action: 'RECORD_PURCHASE_RETURN',
+    module: 'Returns',
+    details: `Purchase Return for Invoice ${returnData.invoiceNumber} - Total: SAR ${returnData.totalAmount}`
   });
 };
 
@@ -418,6 +528,109 @@ export const recordCustomerPayment = async (
     action: 'RECORD_CUSTOMER_PAYMENT',
     module: 'Treasury',
     details: `Payment of SAR ${amount} from customer ${customerId} - ${notes}`
+  });
+};
+
+export const recordCheque = async (
+  companyId: string,
+  cheque: any,
+  userId?: string
+) => {
+  const isIncoming = cheque.type === 'incoming';
+  const notesAccount = await findAccount(companyId, { 
+    name: isIncoming ? 'Notes Receivable' : 'Notes Payable', 
+    type: isIncoming ? 'Asset' : 'Liability' 
+  });
+  
+  if (!notesAccount) throw new Error(`${isIncoming ? 'Notes Receivable' : 'Notes Payable'} account not found.`);
+
+  // 1. Record in Journal
+  if (isIncoming) {
+    // Debit: Notes Receivable, Credit: Customer (AR)
+    const arAccount = await findAccount(companyId, { name: 'Accounts Receivable', type: 'Asset' });
+    if (arAccount) {
+      await createAccountingEntry(companyId, notesAccount.id, cheque.amount, 'debit', `Cheque received #${cheque.number}`, undefined, userId);
+      await createAccountingEntry(companyId, arAccount.id, cheque.amount, 'credit', `Cheque received #${cheque.number}`, undefined, userId);
+    }
+    
+    // Update Customer Balance
+    const customers = getCollection<Customer>('customers');
+    const customerIndex = customers.findIndex((c: any) => c.id === cheque.entityId);
+    if (customerIndex !== -1) {
+      customers[customerIndex].balance -= cheque.amount;
+      customers[customerIndex].totalPaid += cheque.amount;
+      saveCollection('customers', customers);
+    }
+  } else {
+    // Debit: Supplier (AP), Credit: Notes Payable
+    const apAccount = await findAccount(companyId, { name: 'Accounts Payable', type: 'Liability' });
+    if (apAccount) {
+      await createAccountingEntry(companyId, apAccount.id, cheque.amount, 'debit', `Cheque issued #${cheque.number}`, undefined, userId);
+      await createAccountingEntry(companyId, notesAccount.id, cheque.amount, 'credit', `Cheque issued #${cheque.number}`, undefined, userId);
+    }
+    
+    // Update Supplier Balance
+    const suppliers = getCollection<Supplier>('suppliers');
+    const supplierIndex = suppliers.findIndex((s: any) => s.id === cheque.entityId);
+    if (supplierIndex !== -1) {
+      suppliers[supplierIndex].balance -= cheque.amount;
+      saveCollection('suppliers', suppliers);
+    }
+  }
+
+  await logAction({
+    userId: userId || 'system',
+    companyId,
+    userName: 'System',
+    action: 'RECORD_CHEQUE',
+    module: 'Cheques',
+    details: `Recorded ${cheque.type} cheque #${cheque.number} - Amount: SAR ${cheque.amount}`
+  });
+};
+
+export const clearCheque = async (
+  companyId: string,
+  chequeId: string,
+  userId?: string
+) => {
+  const cheques = getCollection<any>('cheques');
+  const chequeIndex = cheques.findIndex((c: any) => c.id === chequeId);
+  if (chequeIndex === -1) throw new Error("Cheque not found");
+  
+  const cheque = cheques[chequeIndex];
+  if (cheque.status !== 'pending') throw new Error("Cheque is already processed");
+
+  const isIncoming = cheque.type === 'incoming';
+  const notesAccount = await findAccount(companyId, { 
+    name: isIncoming ? 'Notes Receivable' : 'Notes Payable', 
+    type: isIncoming ? 'Asset' : 'Liability' 
+  });
+  
+  if (!notesAccount) throw new Error(`${isIncoming ? 'Notes Receivable' : 'Notes Payable'} account not found.`);
+
+  // 1. Record in Journal
+  if (isIncoming) {
+    // Debit: Cash/Bank, Credit: Notes Receivable
+    await createAccountingEntry(companyId, cheque.accountId, cheque.amount, 'debit', `Cheque cleared #${cheque.number}`, undefined, userId);
+    await createAccountingEntry(companyId, notesAccount.id, cheque.amount, 'credit', `Cheque cleared #${cheque.number}`, undefined, userId);
+  } else {
+    // Debit: Notes Payable, Credit: Cash/Bank
+    await createAccountingEntry(companyId, notesAccount.id, cheque.amount, 'debit', `Cheque cleared #${cheque.number}`, undefined, userId);
+    await createAccountingEntry(companyId, cheque.accountId, cheque.amount, 'credit', `Cheque cleared #${cheque.number}`, undefined, userId);
+  }
+
+  // 2. Update Cheque Status
+  cheques[chequeIndex].status = 'cleared';
+  cheques[chequeIndex].updatedAt = new Date().toISOString();
+  saveCollection('cheques', cheques);
+
+  await logAction({
+    userId: userId || 'system',
+    companyId,
+    userName: 'System',
+    action: 'CLEAR_CHEQUE',
+    module: 'Cheques',
+    details: `Cleared cheque #${cheque.number} - Amount: SAR ${cheque.amount}`
   });
 };
 

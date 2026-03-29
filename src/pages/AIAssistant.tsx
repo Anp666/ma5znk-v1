@@ -240,7 +240,7 @@ export default function AIAssistant({ lang, profile }: Props) {
                       ? 'bg-primary text-white rounded-tr-none' 
                       : 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 rounded-tl-none'
                   }`}>
-                    <div className="prose dark:prose-invert prose-blue max-w-none font-medium leading-relaxed text-sm lg:text-base">
+                    <div className="prose dark:prose-invert prose-emerald max-w-none font-medium leading-relaxed text-sm lg:text-base">
                       <ReactMarkdown>{msg.content}</ReactMarkdown>
                     </div>
                   </div>
@@ -279,7 +279,7 @@ export default function AIAssistant({ lang, profile }: Props) {
                           />
                           <Bar dataKey="value" radius={[6, 6, 0, 0]}>
                             {msg.chartData.map((entry: any, index: number) => (
-                              <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#3b82f6' : '#2563eb'} />
+                              <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#10b981' : '#059669'} />
                             ))}
                           </Bar>
                         </BarChart>

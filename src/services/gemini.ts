@@ -52,6 +52,28 @@ export const financialTools = [
     }
   },
   {
+    name: "get_customers_data",
+    description: "Get list of customers, their balances, and total purchases.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {}
+    }
+  },
+  {
+    name: "get_purchases_data",
+    description: "Get purchase invoices and data for a specific period.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        period: {
+          type: Type.STRING,
+          description: "Period: 'today', 'this_week', 'this_month', or 'all'",
+        }
+      },
+      required: ["period"]
+    }
+  },
+  {
     name: "get_reports_summary",
     description: "Get a summary of financial reports including total sales, purchases, and profit.",
     parameters: {
@@ -60,6 +82,27 @@ export const financialTools = [
         period: {
           type: Type.STRING,
           description: "Period: 'this_month', 'last_month', or 'all'",
+        }
+      }
+    }
+  },
+  {
+    name: "get_accounts_data",
+    description: "Get the Chart of Accounts and current balances.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {}
+    }
+  },
+  {
+    name: "get_journal_entries_data",
+    description: "Get recent journal entries and accounting transactions.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        limit: {
+          type: Type.NUMBER,
+          description: "Number of recent entries to return",
         }
       }
     }
@@ -91,6 +134,31 @@ export const generateFinancialResponse = async (messages: any[], tools: any[] = 
   });
 
   return response;
+};
+
+export const generateSmartInsights = async (data: any, lang: 'ar' | 'en') => {
+  const model = "gemini-3-flash-preview";
+  const prompt = `
+    Analyze this business data and provide 3 short, actionable insights or alerts.
+    Data: ${JSON.stringify(data)}
+    
+    Return a JSON array of objects: [{ "title": "...", "description": "...", "type": "warning|info|success", "icon": "trending|package|wallet" }]
+    Language: ${lang === 'ar' ? 'Arabic' : 'English'}
+  `;
+
+  const response = await ai.models.generateContent({
+    model,
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json"
+    }
+  });
+
+  try {
+    return JSON.parse(response.text || '[]');
+  } catch (e) {
+    return [];
+  }
 };
 
 export const parseVoiceCommand = async (transcript: string) => {

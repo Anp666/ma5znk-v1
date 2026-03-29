@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Search, FileText, Printer, Download, Trash2, ShoppingCart, User, Calendar, CreditCard, Package, X, Minus, Plus as PlusIcon, ScanBarcode, Percent, Banknote, Eye, FileDown } from 'lucide-react';
-import { Invoice, Product, Customer, Account } from '../types';
+import { Plus, Search, FileText, Printer, Download, Trash2, ShoppingCart, User, Calendar, CreditCard, Package, X, Minus, Plus as PlusIcon, ScanBarcode, Percent, Banknote, Eye, FileDown, Mic, MicOff } from 'lucide-react';
+import { Invoice, Product, Customer, Account, InvoiceItem } from '../types';
 import { translations } from '../translations';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
@@ -13,7 +13,9 @@ import Pagination from '../components/Pagination';
 import { Filter, RotateCcw } from 'lucide-react';
 import { logAction } from '../services/actionTrackingService';
 import { recordSalesInvoice, getCollection, addToCollection, updateInCollection, deleteFromCollection } from '../services/accountingService';
-import { getCurrencySymbol } from '../utils/currency';
+import { getCurrencySymbol, formatCurrency } from '../utils/currency';
+import { BarcodeScanner } from '../components/BarcodeScanner';
+import { useVoiceInput } from '../hooks/useVoiceInput';
 
 interface Props {
   lang: 'ar' | 'en';
@@ -22,6 +24,8 @@ interface Props {
 
 interface CartItem extends Product {
   cartQuantity: number;
+  selectedPriceType: 'sellingPrice' | 'wholesalePrice' | 'vipPrice';
+  selectedPrice: number;
 }
 
 export default function Invoices({ lang, profile }: Props) {
@@ -36,6 +40,20 @@ export default function Invoices({ lang, profile }: Props) {
   const [searchTerm, setSearchTerm] = useState('');
   const [posSearchTerm, setPosSearchTerm] = useState('');
   const [barcodeInput, setBarcodeInput] = useState('');
+  const [isScanning, setIsScanning] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [dueDate, setDueDate] = useState(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+  const [notes, setNotes] = useState('');
+  const [isVatEnabled, setIsVatEnabled] = useState(profile?.currency === 'SAR');
+  
+  const { isListening, transcript, startListening, stopListening } = useVoiceInput(lang);
+
+  useEffect(() => {
+    if (transcript) {
+      setPosSearchTerm(transcript);
+    }
+  }, [transcript]);
   
   // Filters
   const [statusFilter, setStatusFilter] = useState('all');
@@ -88,27 +106,47 @@ export default function Invoices({ lang, profile }: Props) {
     return () => window.removeEventListener('keydown', handleEsc);
   }, [isModalOpen]);
 
-  const addToCart = (product: Product) => {
+  const addToCart = (product: Product, priceType: 'sellingPrice' | 'wholesalePrice' | 'vipPrice' = 'sellingPrice') => {
     if (product.quantity <= 0) {
       toast.error(lang === 'ar' ? 'هذا المنتج غير متوفر في المخزون' : 'This product is out of stock');
       return;
     }
 
+    const price = product[priceType] || product.sellingPrice;
+
     setCart(prev => {
-      const existing = prev.find(item => item.id === product.id);
+      const existing = prev.find(item => item.id === product.id && item.selectedPriceType === priceType);
       if (existing) {
         if (existing.cartQuantity + 1 > product.quantity) {
           toast.error(lang === 'ar' ? 'الكمية المطلوبة أكبر من الكمية المتاحة في المخزون' : 'Requested quantity exceeds available stock');
           return prev;
         }
         return prev.map(item => 
-          item.id === product.id 
+          (item.id === product.id && item.selectedPriceType === priceType)
             ? { ...item, cartQuantity: item.cartQuantity + 1 } 
             : item
         );
       }
-      return [...prev, { ...product, cartQuantity: 1 }];
+      return [...prev, { 
+        ...product, 
+        cartQuantity: 1, 
+        selectedPriceType: priceType,
+        selectedPrice: price
+      }];
     });
+  };
+
+  const updateCartPriceType = (productId: string, priceType: 'sellingPrice' | 'wholesalePrice' | 'vipPrice') => {
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+
+    const price = product[priceType] || product.sellingPrice;
+
+    setCart(prev => prev.map(item => 
+      item.id === productId 
+        ? { ...item, selectedPriceType: priceType, selectedPrice: price } 
+        : item
+    ));
   };
 
   const updateCartQuantity = (productId: string, quantity: number) => {
@@ -129,19 +167,38 @@ export default function Invoices({ lang, profile }: Props) {
     ));
   };
 
+  const removeFromCart = (productId: string) => {
+    setCart(prev => prev.filter(item => item.id !== productId));
+  };
+
   const handleBarcodeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const product = products.find(p => p.barcode === barcodeInput || p.sku === barcodeInput);
     if (product) {
       addToCart(product);
       setBarcodeInput('');
+      toast.success(lang === 'ar' ? `تم إضافة ${product.name}` : `Added ${product.name}`);
+    } else {
+      toast.error(t.productNotFound);
     }
   };
 
-  const subtotal = cart.reduce((sum, item) => sum + (item.sellingPrice * item.cartQuantity), 0);
+  const handleBarcodeScan = (decodedText: string) => {
+    const product = products.find(p => p.barcode === decodedText || p.sku === decodedText);
+    if (product) {
+      addToCart(product);
+      toast.success(lang === 'ar' ? `تم إضافة ${product.name}` : `Added ${product.name}`);
+    } else {
+      toast.error(t.productNotFound);
+    }
+  };
+
+  const subtotal = cart.reduce((sum, item) => sum + (item.selectedPrice * item.cartQuantity), 0);
   const discountValue = discountType === 'percentage' ? (subtotal * discount / 100) : discount;
   const taxableAmount = subtotal - discountValue;
-  const taxValue = taxableAmount * (taxRate / 100);
+  
+  const effectiveTaxRate = isVatEnabled ? 15 : 0;
+  const taxValue = taxableAmount * (effectiveTaxRate / 100);
   const total = taxableAmount + taxValue;
 
   const handleCheckout = async () => {
@@ -160,20 +217,24 @@ export default function Invoices({ lang, profile }: Props) {
       
       const invoiceData: Omit<Invoice, 'id'> = {
         number: invoiceNumber,
-        date: new Date().toISOString(),
+        date: new Date(invoiceDate).toISOString(),
+        dueDate: new Date(dueDate).toISOString(),
+        notes,
         customerId: selectedCustomerId || null,
         customerName: customer?.name || (lang === 'ar' ? 'عميل نقدي' : 'Cash Customer'),
         items: cart.map(item => ({
           productId: item.id!,
           name: item.name,
           quantity: item.cartQuantity,
-          price: item.sellingPrice,
-          total: item.sellingPrice * item.cartQuantity
+          price: item.selectedPrice,
+          priceType: item.selectedPriceType === 'sellingPrice' ? 'retail' : 
+                     item.selectedPriceType === 'wholesalePrice' ? 'wholesale' : 'vip',
+          total: item.selectedPrice * item.cartQuantity
         })),
         subtotal,
         discount: discountValue,
         discountType,
-        taxRate,
+        taxRate: effectiveTaxRate,
         tax: taxValue,
         total,
         paidAmount: paymentMethod === 'credit' ? 0 : total,
@@ -477,14 +538,24 @@ export default function Invoices({ lang, profile }: Props) {
     currentPage * pageSize
   );
 
-  const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(posSearchTerm.toLowerCase()) ||
-    p.sku?.toLowerCase().includes(posSearchTerm.toLowerCase()) ||
-    p.barcode?.toLowerCase().includes(posSearchTerm.toLowerCase())
-  );
+    const categories = ['all', ...new Set(products.map(p => p.categoryId).filter(Boolean))];
+    const filteredProducts = products.filter(p => {
+      const matchesSearch = p.name.toLowerCase().includes(posSearchTerm.toLowerCase()) ||
+        p.sku?.toLowerCase().includes(posSearchTerm.toLowerCase()) ||
+        p.barcode?.toLowerCase().includes(posSearchTerm.toLowerCase());
+      const matchesCategory = selectedCategory === 'all' || p.categoryId === selectedCategory;
+      return matchesSearch && matchesCategory;
+    });
 
   return (
     <div className="space-y-10">
+      {isScanning && (
+        <BarcodeScanner 
+          lang={lang}
+          onScan={handleBarcodeScan}
+          onClose={() => setIsScanning(false)}
+        />
+      )}
       {/* Printable Invoice (Hidden) */}
       <div id="printable-invoice" className="hidden print:block p-10 bg-white text-black font-sans">
         {viewingInvoice && (
@@ -778,7 +849,7 @@ export default function Invoices({ lang, profile }: Props) {
       {/* POS Modal */}
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center md:p-6 no-print">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6 no-print">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -787,109 +858,155 @@ export default function Invoices({ lang, profile }: Props) {
               className="absolute inset-0 bg-zinc-950/60 backdrop-blur-xl" 
             />
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full h-full md:h-[90vh] lg:h-[85vh] md:max-w-[1200px] bg-white dark:bg-zinc-900 md:rounded-[2.5rem] shadow-2xl overflow-y-auto md:overflow-hidden flex flex-col md:flex-row border border-zinc-200 dark:border-zinc-800"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="relative m-modal flex flex-col md:flex-row !max-w-[1300px] !overflow-hidden !h-[95vh]"
             >
               {/* LEFT SIDE: Product Selection */}
-              <div className="w-full md:flex-1 flex flex-col md:h-full overflow-hidden bg-zinc-50/50 dark:bg-zinc-900/50">
-                <div className="p-4 md:p-10 pb-4 border-b border-zinc-100 dark:border-zinc-800">
-                  <div className="flex items-center justify-between mb-4 md:mb-6">
-                    <h3 className="text-xl md:text-4xl font-black tracking-tighter">{lang === 'ar' ? 'إنشاء فاتورة' : 'Create Invoice'}</h3>
-                    <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
-                      <X className="w-6 h-6 md:w-7 md:h-7" />
-                    </button>
+              <div className="w-full md:w-[60%] flex flex-col h-full overflow-hidden bg-zinc-50/50 dark:bg-zinc-900/50 border-r border-zinc-100 dark:border-zinc-800">
+                <div className="p-6 space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-2xl font-black">{lang === 'ar' ? 'اختيار المنتجات' : 'Select Products'}</h2>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => setIsScanning(true)}
+                        className="p-3 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-600 dark:text-zinc-400 hover:text-primary transition-all"
+                        title={t.scanBarcode}
+                      >
+                        <ScanBarcode className="w-6 h-6" />
+                      </button>
+                      <button 
+                        onClick={isListening ? stopListening : startListening}
+                        className={`p-3 border rounded-xl transition-all ${
+                          isListening 
+                            ? 'bg-red-50 border-red-200 text-red-600 animate-pulse' 
+                            : 'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400'
+                        }`}
+                        title={lang === 'ar' ? 'بحث صوتي' : 'Voice Search'}
+                      >
+                        {isListening ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
-                    <div className="relative group">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 group-focus-within:text-emerald-500 transition-colors" />
+                  <div className="flex flex-col md:flex-row gap-4">
+                    <div className="relative flex-1 group">
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400 group-focus-within:text-primary transition-colors" />
                       <input 
                         type="text" 
                         placeholder={t.searchProduct}
                         value={posSearchTerm}
                         onChange={(e) => setPosSearchTerm(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3 md:py-3.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all font-bold shadow-sm" 
+                        className="w-full pl-12 pr-4 py-3 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl outline-none focus:ring-2 ring-primary/20 transition-all font-medium"
                       />
                     </div>
-                    <form onSubmit={handleBarcodeSubmit} className="relative group">
-                      <ScanBarcode className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 group-focus-within:text-emerald-500 transition-colors" />
+                    <form onSubmit={handleBarcodeSubmit} className="relative w-full md:w-48 group">
+                      <ScanBarcode className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400 group-focus-within:text-primary transition-colors" />
                       <input 
                         ref={barcodeRef}
                         type="text" 
                         placeholder={t.barcode}
                         value={barcodeInput}
                         onChange={(e) => setBarcodeInput(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3 md:py-3.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all font-bold shadow-sm" 
+                        className="w-full pl-12 pr-4 py-3 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl outline-none focus:ring-2 ring-primary/20 transition-all font-medium"
                       />
                     </form>
                   </div>
-                </div>
 
-                <div className="flex-1 overflow-y-auto p-4 md:p-10 pt-4 custom-scrollbar min-h-[300px] md:min-h-0">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-6">
-                    {filteredProducts.map(product => (
-                      <div 
-                        key={product.id} 
-                        onClick={() => addToCart(product)}
-                        className="p-3 md:p-5 bg-white dark:bg-zinc-800 rounded-[1.25rem] md:rounded-[2rem] hover:ring-4 hover:ring-emerald-500/20 cursor-pointer transition-all group relative shadow-sm border border-zinc-100 dark:border-zinc-700/50"
+                  {/* Category Tabs */}
+                  <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                    {categories.map(cat => (
+                      <button
+                        key={cat}
+                        onClick={() => setSelectedCategory(cat || 'all')}
+                        className={`px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all ${
+                          selectedCategory === cat
+                            ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                            : 'bg-white dark:bg-zinc-800 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-700'
+                        }`}
                       >
-                        <div className="w-full aspect-square bg-zinc-50 dark:bg-zinc-700 rounded-lg md:rounded-[1.25rem] mb-2 md:mb-4 flex items-center justify-center text-zinc-300 group-hover:scale-105 transition-all duration-500">
-                          <Package className="w-6 h-6 md:w-10 md:h-10" />
-                        </div>
-                        <div className="font-black text-[10px] md:text-sm mb-1 md:mb-2 text-zinc-900 dark:text-white line-clamp-1 group-hover:text-emerald-600 transition-colors">{product.name}</div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-emerald-600 font-black text-[10px] md:text-base">{lang === 'ar' ? 'ج.م' : 'EGP'} {product.sellingPrice}</span>
-                          <div className="flex flex-col items-end">
-                            <span className={`text-[7px] md:text-[10px] font-black px-1.5 py-0.5 md:px-2 md:py-1 rounded-lg uppercase tracking-widest ${
-                              product.quantity <= 0 ? 'bg-red-100 text-red-600 dark:bg-red-900/20' : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-300'
-                            }`}>
-                              {lang === 'ar' ? 'المخزون' : 'Stock'}: {product.quantity}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
+                        {cat === 'all' ? t.all : cat}
+                      </button>
                     ))}
                   </div>
                 </div>
 
-                {/* Mobile Cart Toggle (Visible only on mobile) */}
-                <div className="md:hidden p-4 bg-white dark:bg-zinc-900 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between sticky bottom-0 z-20 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">{t.total}</span>
-                    <span className="text-xl font-black text-emerald-600">{total.toFixed(2)}</span>
+                <div className="flex-1 overflow-y-auto p-6 pt-0 custom-scrollbar">
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                    {filteredProducts.map(product => (
+                      <motion.button
+                        key={product.id}
+                        whileHover={{ y: -4 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => addToCart(product)}
+                        className="flex flex-col text-right bg-white dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-2xl p-4 hover:shadow-xl hover:border-primary/30 transition-all group relative overflow-hidden"
+                      >
+                        <div className="absolute top-0 right-0 w-1 h-full bg-primary opacity-0 group-hover:opacity-100 transition-all" />
+                        <div className="flex justify-between items-start mb-3">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-widest ${
+                            product.quantity <= (product.minStock || 5) 
+                              ? 'bg-red-100 text-red-600' 
+                              : 'bg-emerald-100 text-emerald-600'
+                          }`}>
+                            {product.quantity} {t.records}
+                          </span>
+                          <Package className="w-5 h-5 text-zinc-300 group-hover:text-primary transition-colors" />
+                        </div>
+                        <h4 className="font-bold text-zinc-900 dark:text-white mb-1 line-clamp-1">{product.name}</h4>
+                        <p className="text-xs text-zinc-400 mb-3">{product.categoryId}</p>
+                        <div className="mt-auto pt-3 border-t border-zinc-50 dark:border-zinc-700 flex items-center justify-between">
+                          <span className="text-primary font-black">{currencySymbol} {product.sellingPrice.toLocaleString()}</span>
+                          <div className="w-8 h-8 rounded-lg bg-zinc-50 dark:bg-zinc-700 flex items-center justify-center text-zinc-400 group-hover:bg-primary group-hover:text-white transition-all">
+                            <PlusIcon className="w-4 h-4" />
+                          </div>
+                        </div>
+                      </motion.button>
+                    ))}
                   </div>
-                  <button 
-                    onClick={() => {
-                      const cartSection = document.getElementById('cart-section');
-                      cartSection?.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                    className="px-6 py-3 bg-emerald-600 text-white rounded-xl font-black text-sm shadow-lg shadow-emerald-600/20 flex items-center gap-2"
-                  >
-                    <ShoppingCart className="w-4 h-4" />
-                    {lang === 'ar' ? 'عرض السلة' : 'View Cart'} ({cart.length})
-                  </button>
                 </div>
               </div>
 
-              {/* RIGHT SIDE: Live Invoice Preview */}
-              <div id="cart-section" className="w-full md:w-[380px] lg:w-[420px] xl:w-[480px] bg-white dark:bg-zinc-900 p-4 md:p-8 flex flex-col border-t md:border-t-0 md:border-l border-zinc-100 dark:border-zinc-800 h-auto md:h-full overflow-visible md:overflow-hidden">
-                <div className="flex items-center gap-4 mb-4 md:mb-6">
-                  <div className="w-10 h-10 md:w-12 md:h-12 bg-emerald-600 text-white rounded-xl flex items-center justify-center shadow-lg shadow-emerald-600/20">
-                    <ShoppingCart className="w-5 h-5 md:w-6 md:h-6" />
+              {/* RIGHT SIDE: Cart & Checkout */}
+              <div className="w-full md:w-[40%] flex flex-col h-full bg-white dark:bg-zinc-950">
+                <div className="p-6 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                      <ShoppingCart className="w-5 h-5" />
+                    </div>
+                    <h2 className="text-xl font-black">{t.checkout}</h2>
                   </div>
-                  <h4 className="text-lg md:text-2xl font-black tracking-tighter">{lang === 'ar' ? 'معاينة الفاتورة' : 'Invoice Preview'}</h4>
+                  <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
+                    <X className="w-6 h-6" />
+                  </button>
                 </div>
 
-                {/* Top Fields */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-2">{t.customerName}</label>
+                <div className="p-6 space-y-4 border-b border-zinc-100 dark:border-zinc-800">
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-2">{t.date}</label>
+                      <input 
+                        type="date"
+                        value={invoiceDate}
+                        onChange={(e) => setInvoiceDate(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-zinc-50 dark:bg-zinc-900 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 ring-primary/20"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'تاريخ الاستحقاق' : 'Due Date'}</label>
+                      <input 
+                        type="date"
+                        value={dueDate}
+                        onChange={(e) => setDueDate(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-zinc-50 dark:bg-zinc-900 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 ring-primary/20"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-2">{t.selectCustomer}</label>
                       <select 
                         value={selectedCustomerId}
                         onChange={(e) => setSelectedCustomerId(e.target.value)}
-                        className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl text-sm outline-none focus:ring-4 focus:ring-emerald-500/10 font-bold"
+                        className="w-full px-4 py-2.5 bg-zinc-50 dark:bg-zinc-900 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 ring-primary/20"
                       >
                         <option value="">{lang === 'ar' ? 'عميل نقدي' : 'Cash Customer'}</option>
                         {customers.map(c => (
@@ -897,235 +1014,156 @@ export default function Invoices({ lang, profile }: Props) {
                         ))}
                       </select>
                     </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'طريقة الدفع' : 'Payment Method'}</label>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar invoice-items-scroll">
+                  {cart.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-zinc-400 space-y-4 opacity-50">
+                      <ShoppingCart className="w-16 h-16 stroke-[1]" />
+                      <p className="font-bold">{t.noProductsSelected}</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {cart.map((item, idx) => (
+                        <div key={`${item.id}-${item.selectedPriceType}`} className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-100 dark:border-zinc-800 group">
+                          <div className="flex justify-between items-start mb-3">
+                            <div className="flex-1">
+                              <h5 className="font-bold text-zinc-900 dark:text-white">{item.name}</h5>
+                              <div className="flex items-center gap-2 mt-1">
+                                <select
+                                  value={item.selectedPriceType}
+                                  onChange={(e) => updateCartPriceType(item.id!, e.target.value as any)}
+                                  className="text-[10px] font-black bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md px-1 py-0.5 outline-none"
+                                >
+                                  <option value="sellingPrice">{t.price1}</option>
+                                  <option value="wholesalePrice">{t.price2}</option>
+                                  <option value="vipPrice">{t.price3}</option>
+                                </select>
+                                <span className="text-xs text-zinc-400">{currencySymbol} {item.selectedPrice.toLocaleString()}</span>
+                              </div>
+                            </div>
+                            <button onClick={() => removeFromCart(item.id!)} className="p-2 text-zinc-300 hover:text-red-500 transition-colors">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center bg-white dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700 p-1">
+                              <button 
+                                onClick={() => updateCartQuantity(item.id!, item.cartQuantity - 1)}
+                                className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-primary transition-colors"
+                              >
+                                <Minus className="w-4 h-4" />
+                              </button>
+                              <input 
+                                type="number" 
+                                value={item.cartQuantity}
+                                onChange={(e) => updateCartQuantity(item.id!, parseInt(e.target.value) || 0)}
+                                className="w-12 text-center font-black text-sm bg-transparent outline-none"
+                              />
+                              <button 
+                                onClick={() => updateCartQuantity(item.id!, item.cartQuantity + 1)}
+                                className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-primary transition-colors"
+                              >
+                                <PlusIcon className="w-4 h-4" />
+                              </button>
+                            </div>
+                            <span className="font-black text-primary">{currencySymbol} {(item.selectedPrice * item.cartQuantity).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-6 bg-zinc-50 dark:bg-zinc-900/80 border-t border-zinc-100 dark:border-zinc-800 space-y-4 sticky bottom-0 z-10">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-2">{t.discount}</label>
+                      <div className="flex gap-2">
+                        <input 
+                          type="number" 
+                          value={discount}
+                          onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
+                          className="flex-1 px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm font-bold outline-none"
+                        />
+                        <button 
+                          onClick={() => setDiscountType(discountType === 'percentage' ? 'fixed' : 'percentage')}
+                          className="px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs font-black"
+                        >
+                          {discountType === 'percentage' ? '%' : currencySymbol}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-2">{t.paymentMethod}</label>
                       <select 
                         value={paymentMethod}
-                        onChange={(e) => {
-                          const val = e.target.value as any;
-                          setPaymentMethod(val);
-                          if (val === 'credit') {
-                            setSelectedAccountId('');
-                          }
-                        }}
-                        className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl text-sm outline-none focus:ring-4 focus:ring-emerald-500/10 font-bold"
+                        onChange={(e) => setPaymentMethod(e.target.value as any)}
+                        className="w-full px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm font-bold outline-none"
                       >
-                        <option value="cash">{lang === 'ar' ? 'نقدي' : 'Cash'}</option>
-                        <option value="card">{lang === 'ar' ? 'بطاقة' : 'Card'}</option>
-                        <option value="bank_transfer">{lang === 'ar' ? 'تحويل بنكي' : 'Bank Transfer'}</option>
+                        <option value="cash">{t.cash}</option>
+                        <option value="card">{t.card}</option>
+                        <option value="bank_transfer">{t.bankTransfer}</option>
                         <option value="credit">{lang === 'ar' ? 'آجل' : 'Credit'}</option>
                       </select>
                     </div>
                   </div>
 
-                  {paymentMethod !== 'credit' && (
-                    <div className="mb-6 space-y-1.5">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'حساب الدفع' : 'Payment Account'}</label>
-                      <select 
-                        value={selectedAccountId}
-                        onChange={(e) => setSelectedAccountId(e.target.value)}
-                        className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl text-sm outline-none focus:ring-4 focus:ring-emerald-500/10 font-bold"
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'الضريبة (15%)' : 'VAT (15%)'}</label>
+                      <button 
+                        onClick={() => setIsVatEnabled(!isVatEnabled)}
+                        className={`w-full py-2 rounded-xl text-xs font-black transition-all ${
+                          isVatEnabled 
+                            ? 'bg-emerald-100 text-emerald-600 border border-emerald-200' 
+                            : 'bg-zinc-100 text-zinc-400 border border-zinc-200'
+                        }`}
                       >
-                        <option value="">{lang === 'ar' ? 'اختر حساب' : 'Select Account'}</option>
-                        {accounts.map(a => (
-                          <option key={a.id} value={a.id}>{a.name}</option>
-                        ))}
-                      </select>
+                        {isVatEnabled ? (lang === 'ar' ? 'مفعلة' : 'Enabled') : (lang === 'ar' ? 'معطلة' : 'Disabled')}
+                      </button>
                     </div>
-                  )}
-
-                {/* Live Receipt Preview */}
-                <div className="flex-1 bg-zinc-50 dark:bg-zinc-800/50 rounded-[2rem] p-4 md:p-6 flex flex-col overflow-hidden border border-zinc-100 dark:border-zinc-800/50 min-h-[400px] md:min-h-0">
-                  <div className="text-center mb-4 md:mb-6">
-                    <h5 className="font-black text-lg md:text-xl tracking-tighter">{t.storeName}</h5>
-                    <p className="text-[8px] text-zinc-400 font-black uppercase tracking-[0.3em] mt-1">POS RECEIPT</p>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'ملاحظات' : 'Notes'}</label>
+                      <input 
+                        type="text"
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder={lang === 'ar' ? 'أضف ملاحظة...' : 'Add a note...'}
+                        className="w-full px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm font-bold outline-none"
+                      />
+                    </div>
                   </div>
 
-                  <div className="flex justify-between text-[10px] font-black text-zinc-400 mb-4 border-b border-dashed border-zinc-200 dark:border-zinc-700 pb-4 uppercase tracking-widest">
-                    <span>{new Date().toLocaleDateString()}</span>
-                    <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto space-y-3 md:space-y-4 pr-2 custom-scrollbar mb-4 md:mb-6">
-                    {cart.map(item => {
-                      const isOverStock = item.cartQuantity > item.quantity;
-                      return (
-                        <div key={item.id} className={`p-3 md:p-4 rounded-2xl border transition-all ${
-                          isOverStock 
-                            ? 'bg-red-50 border-red-200 dark:bg-red-900/10 dark:border-red-900/30' 
-                            : 'bg-white dark:bg-zinc-800 border-zinc-100 dark:border-zinc-700'
-                        }`}>
-                          <div className="flex justify-between items-start gap-4">
-                            <div className="flex-1">
-                              <div className="text-xs font-black text-zinc-900 dark:text-white">{item.name}</div>
-                              <div className="text-[9px] md:text-[10px] text-zinc-500 font-bold mt-1">
-                                {lang === 'ar' ? 'المخزون المتاح' : 'Available Stock'}: {item.quantity}
-                              </div>
-                              <div className="flex items-center gap-3 mt-3 no-print">
-                                <div className="flex items-center gap-1">
-                                  <button 
-                                    onClick={() => updateCartQuantity(item.id!, item.cartQuantity - 1)} 
-                                    className="p-2 md:p-1.5 bg-zinc-100 dark:bg-zinc-700 hover:bg-zinc-200 rounded-lg transition-colors"
-                                  >
-                                    <Minus className="w-4 h-4 md:w-3 md:h-3" />
-                                  </button>
-                                  <input 
-                                    type="number"
-                                    value={item.cartQuantity}
-                                    onChange={(e) => updateCartQuantity(item.id!, Number(e.target.value))}
-                                    className={`w-14 md:w-12 text-center bg-transparent border-none text-sm md:text-xs font-black focus:ring-0 ${isOverStock ? 'text-red-600' : ''}`}
-                                  />
-                                  <button 
-                                    onClick={() => updateCartQuantity(item.id!, item.cartQuantity + 1)} 
-                                    className="p-2 md:p-1.5 bg-zinc-100 dark:bg-zinc-700 hover:bg-zinc-200 rounded-lg transition-colors"
-                                  >
-                                    <PlusIcon className="w-4 h-4 md:w-3 md:h-3" />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className={`text-xs md:text-sm font-black ${isOverStock ? 'text-red-600' : 'text-emerald-600'}`}>
-                                {currencySymbol} {(item.sellingPrice * item.cartQuantity).toFixed(2)}
-                              </div>
-                              <div className="text-[9px] text-zinc-400 font-bold mt-1">
-                                {currencySymbol} {item.sellingPrice} / {lang === 'ar' ? 'وحدة' : 'unit'}
-                              </div>
-                            </div>
-                          </div>
-                          {isOverStock && (
-                            <div className="mt-2 text-[9px] font-black text-red-500 uppercase tracking-widest">
-                              {lang === 'ar' ? 'الكمية المطلوبة أكبر من الكمية المتاحة في المخزون' : 'Requested quantity exceeds available stock'}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {cart.length === 0 && (
-                      <div className="h-full flex flex-col items-center justify-center text-zinc-300 dark:text-zinc-700 py-10">
-                        <ShoppingCart className="w-12 h-12 mb-3 opacity-20" />
-                        <p className="text-[10px] font-black uppercase tracking-widest opacity-40">Cart is empty</p>
+                  <div className="space-y-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-zinc-500">{t.subtotal}</span>
+                      <span className="font-bold">{currencySymbol} {subtotal.toLocaleString()}</span>
+                    </div>
+                    {discountValue > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-zinc-500">{t.discount}</span>
+                        <span className="font-bold text-red-500">- {currencySymbol} {discountValue.toLocaleString()}</span>
                       </div>
                     )}
-                  </div>
-
-                  {/* Totals Section */}
-                  <div className="space-y-2 md:space-y-3 border-t border-dashed border-zinc-200 dark:border-zinc-700 pt-4">
-                    <div className="flex justify-between text-[10px] font-bold">
-                      <span className="text-zinc-500">{t.subtotal}</span>
-                      <span className="text-zinc-900 dark:text-white">{currencySymbol} {subtotal.toFixed(2)}</span>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-zinc-500">{t.taxValue} ({effectiveTaxRate}%)</span>
+                      <span className="font-bold">{currencySymbol} {taxValue.toLocaleString()}</span>
                     </div>
-                    
-                    {/* Discount & Tax Inputs */}
-                    <div className="grid grid-cols-2 gap-2 no-print">
-                      <div className="relative group">
-                        <Percent className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-zinc-400 group-focus-within:text-emerald-500 transition-colors" />
-                        <input 
-                          type="number" 
-                          value={discount}
-                          onChange={(e) => setDiscount(Number(e.target.value))}
-                          placeholder={t.discount}
-                          className="w-full pl-8 pr-2 py-2 md:py-2.5 bg-white dark:bg-zinc-800 rounded-lg text-[10px] outline-none focus:ring-4 focus:ring-emerald-500/10 font-black shadow-sm"
-                        />
-                      </div>
-                      <select 
-                        value={discountType}
-                        onChange={(e) => setDiscountType(e.target.value as any)}
-                        className="w-full px-2 py-2 md:py-2.5 bg-white dark:bg-zinc-800 rounded-lg text-[10px] outline-none focus:ring-4 focus:ring-emerald-500/10 font-black shadow-sm"
-                      >
-                        <option value="percentage">%</option>
-                        <option value="fixed">{currencySymbol}</option>
-                      </select>
-                    </div>
-
-                    <div className="flex justify-between text-[10px] font-bold">
-                      <span className="text-zinc-500">{t.discount}</span>
-                      <span className="text-red-500">- {currencySymbol} {discountValue.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-[10px] font-bold">
-                      <span className="text-zinc-500">{t.taxValue} ({taxRate}%)</span>
-                      <span className="text-zinc-900 dark:text-white">{currencySymbol} {taxValue.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-xl md:text-2xl font-black pt-3 border-t border-zinc-200 dark:border-zinc-700 tracking-tighter">
-                      <span>{t.total}</span>
-                      <span className="text-emerald-600">{currencySymbol} {total.toFixed(2)}</span>
+                    <div className="flex justify-between text-xl font-black pt-2">
+                      <span>{t.finalTotal}</span>
+                      <span className="text-primary">{currencySymbol} {total.toLocaleString()}</span>
                     </div>
                   </div>
-                </div>
 
-                <div className="mt-4 md:mt-6 flex flex-col sm:flex-row gap-2 md:gap-3 sticky bottom-0 bg-white dark:bg-zinc-900 pt-2 pb-4 md:pb-0">
-                  <div className="flex gap-2 w-full">
-                    <button 
-                      onClick={() => {
-                        const inv: any = {
-                          number: `PRE-${Date.now()}`,
-                          date: new Date().toISOString(),
-                          customerName: customers.find(c => c.id === selectedCustomerId)?.name || 'Cash Customer',
-                          items: cart.map(item => ({
-                            productId: item.id!,
-                            name: item.name,
-                            quantity: item.cartQuantity,
-                            price: item.sellingPrice,
-                            total: item.sellingPrice * item.cartQuantity
-                          })),
-                          subtotal,
-                          discount: discountValue,
-                          discountType,
-                          taxRate,
-                          tax: taxValue,
-                          total,
-                          paymentMethod,
-                          type: 'sales',
-                          status: 'paid',
-                          userId: user?.uid || ''
-                        };
-                        setViewingInvoice(inv);
-                        setTimeout(() => window.print(), 500);
-                      }}
-                      className="flex-1 py-3 md:py-4 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl font-black text-[10px] md:text-xs flex items-center justify-center gap-2 hover:bg-zinc-50 transition-all active:scale-95"
-                    >
-                      <Printer className="w-4 h-4 md:w-5 md:h-5" />
-                      {t.printInvoice}
-                    </button>
-                    <button 
-                      onClick={() => {
-                        const inv = {
-                          number: `PRE-${Date.now()}`,
-                          date: new Date().toISOString(),
-                          customerName: customers.find(c => c.id === selectedCustomerId)?.name || 'Cash Customer',
-                          items: cart.map(item => ({
-                            productId: item.id!,
-                            name: item.name,
-                            quantity: item.cartQuantity,
-                            price: item.sellingPrice,
-                            total: item.sellingPrice * item.cartQuantity
-                          })),
-                          subtotal,
-                          discount: discountValue,
-                          discountType,
-                          taxRate,
-                          tax: taxValue,
-                          total,
-                          paymentMethod,
-                          type: 'sales',
-                          status: 'paid',
-                          userId: user?.uid || ''
-                        };
-                        generateInvoicePDF(inv, lang);
-                      }}
-                      className="flex-1 py-3 md:py-4 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 border border-emerald-200 dark:border-emerald-800 rounded-xl font-black text-[10px] md:text-xs flex items-center justify-center gap-2 hover:bg-emerald-100 transition-all active:scale-95"
-                    >
-                      <FileDown className="w-4 h-4 md:w-5 md:h-5" />
-                      {lang === 'ar' ? 'تحميل PDF' : 'Download PDF'}
-                    </button>
-                  </div>
                   <button 
                     onClick={handleCheckout}
                     disabled={cart.length === 0}
-                    className="w-full py-4 md:py-4 bg-emerald-600 text-white rounded-xl font-black text-sm md:text-xs shadow-xl shadow-emerald-600/20 hover:bg-emerald-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2 active:scale-95"
+                    className="w-full py-4 bg-primary hover:bg-primary-hover text-white rounded-2xl font-black flex items-center justify-center gap-3 shadow-xl shadow-primary/20 transition-all active:scale-[0.98] disabled:bg-zinc-300 disabled:shadow-none"
                   >
-                    <CreditCard className="w-5 h-5" />
-                    {lang === 'ar' ? 'إتمام وحفظ' : 'Complete & Save'}
+                    <ShoppingCart className="w-6 h-6" />
+                    {t.checkout}
                   </button>
                 </div>
               </div>
@@ -1137,7 +1175,7 @@ export default function Invoices({ lang, profile }: Props) {
       {/* View Invoice Modal */}
       <AnimatePresence>
         {viewingInvoice && !isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 no-print">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 no-print">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1146,15 +1184,14 @@ export default function Invoices({ lang, profile }: Props) {
               className="absolute inset-0 bg-zinc-950/60 backdrop-blur-xl" 
             />
             <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 40 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 40 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="relative w-full max-w-2xl bg-white dark:bg-zinc-900 rounded-[3.5rem] shadow-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="relative m-modal !max-w-2xl"
             >
-              <div className="p-12">
+              <div className="p-8 md:p-12">
                 <div className="flex items-center justify-between mb-10">
-                  <h3 className="text-3xl font-black tracking-tighter">{t.invoiceNumber}: {viewingInvoice.number}</h3>
+                  <h3 className="text-2xl md:text-3xl font-black tracking-tighter">{t.invoiceNumber}: {viewingInvoice.number}</h3>
                   <div className="flex items-center gap-3">
                     <button 
                       onClick={() => generateInvoicePDF(viewingInvoice, lang)}
@@ -1170,7 +1207,7 @@ export default function Invoices({ lang, profile }: Props) {
                 </div>
 
                 <div className="space-y-8">
-                  <div className="grid grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div className="p-6 bg-zinc-50 dark:bg-zinc-800 rounded-[1.5rem]">
                       <div className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2">{t.customerName}</div>
                       <div className="font-black text-lg">{viewingInvoice.customerName}</div>
@@ -1215,13 +1252,13 @@ export default function Invoices({ lang, profile }: Props) {
                       <span className="text-zinc-500">{t.taxValue}</span>
                       <span className="text-zinc-900 dark:text-white">{currencySymbol} {viewingInvoice.tax.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between text-4xl font-black pt-6 border-t border-zinc-100 dark:border-zinc-800 tracking-tighter">
+                    <div className="flex justify-between text-2xl md:text-4xl font-black pt-6 border-t border-zinc-100 dark:border-zinc-800 tracking-tighter">
                       <span>{t.total}</span>
                       <span className="text-emerald-600">{currencySymbol} {viewingInvoice.total.toFixed(2)}</span>
                     </div>
                   </div>
 
-                  <div className="flex gap-6 pt-10">
+                  <div className="flex flex-col sm:flex-row gap-6 pt-10">
                     <button 
                       onClick={() => exportToPDF(viewingInvoice)}
                       className="flex-1 py-5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-[1.5rem] font-black text-lg flex items-center justify-center gap-3 hover:bg-zinc-200 transition-all active:scale-95"

@@ -66,19 +66,24 @@ export default function Inventory({ lang, profile }: Props) {
     quantity: 0,
     minStock: 5,
     category: '',
-    description: ''
+    description: '',
+    expiryDate: ''
   });
 
+  const [categories, setCategories] = useState<{id: string, name: string}[]>([]);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+
   useEffect(() => {
-    const loadProducts = () => {
+    const loadData = () => {
       const data = getCollection<Product>('products');
       setProducts(data);
+      const cats = getCollection<{id: string, name: string}>('categories');
+      setCategories(cats);
     };
-    loadProducts();
-    
-    // Listen for local storage changes (simple sync)
-    window.addEventListener('storage', loadProducts);
-    return () => window.removeEventListener('storage', loadProducts);
+    loadData();
+    window.addEventListener('storage', loadData);
+    return () => window.removeEventListener('storage', loadData);
   }, []);
 
   const handleVoiceEntry = async () => {
@@ -130,6 +135,7 @@ export default function Inventory({ lang, profile }: Props) {
         minStock: formData.minStock,
         categoryId: formData.category,
         description: formData.description,
+        expiryDate: formData.expiryDate,
         companyId: profile.companyId
       };
 
@@ -173,7 +179,8 @@ export default function Inventory({ lang, profile }: Props) {
         quantity: product.quantity,
         minStock: product.minStock,
         category: product.categoryId || '',
-        description: product.description || ''
+        description: product.description || '',
+        expiryDate: product.expiryDate || ''
       });
     } else {
       setEditingProduct(null);
@@ -188,7 +195,8 @@ export default function Inventory({ lang, profile }: Props) {
         quantity: 0,
         minStock: 5,
         category: '',
-        description: ''
+        description: '',
+        expiryDate: ''
       });
     }
     setIsModalOpen(true);
@@ -206,8 +214,26 @@ export default function Inventory({ lang, profile }: Props) {
     const matchesCategory = categoryFilter === 'all' || p.categoryId === categoryFilter;
     const matchesLowStock = !lowStockOnly || p.quantity <= p.minStock;
 
+    // Expiry Filters
+    const today = new Date();
+    const expiryDate = p.expiryDate ? new Date(p.expiryDate) : null;
+    const isExpired = expiryDate && expiryDate < today;
+    const isNearExpiry = expiryDate && !isExpired && (expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24) <= 30;
+
+    if (categoryFilter === 'expired' && !isExpired) return false;
+    if (categoryFilter === 'near_expiry' && !isNearExpiry) return false;
+
     return matchesSearch && matchesCategory && matchesLowStock;
   });
+
+  const handleAddCategory = () => {
+    if (!newCategoryName.trim()) return;
+    const added = addToCollection<{id?: string, name: string}>('categories', { name: newCategoryName });
+    setCategories(prev => [...prev, added as {id: string, name: string}]);
+    setNewCategoryName('');
+    setIsCategoryModalOpen(false);
+    toast.success(lang === 'ar' ? 'تم إضافة القسم' : 'Category added');
+  };
 
   const totalPages = Math.ceil(filteredProducts.length / pageSize);
   const paginatedProducts = filteredProducts.slice(
@@ -215,7 +241,7 @@ export default function Inventory({ lang, profile }: Props) {
     currentPage * pageSize
   );
 
-  const categories = Array.from(new Set(products.map(p => p.categoryId))).filter(Boolean);
+  const uniqueCategoryIds = Array.from(new Set(products.map(p => p.categoryId))).filter(Boolean);
 
   const handleExportExcel = () => {
     try {
@@ -420,7 +446,7 @@ export default function Inventory({ lang, profile }: Props) {
             onClick={handleExportExcel}
             className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-sm font-bold hover:bg-zinc-50 transition-all"
           >
-            <Download className="w-4 h-4 text-blue-500" />
+            <Download className="w-4 h-4 text-emerald-500" />
             {lang === 'ar' ? 'تصدير إكسل' : 'Export Excel'}
           </button>
           <label className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-sm font-bold hover:bg-zinc-50 transition-all cursor-pointer">
@@ -446,7 +472,7 @@ export default function Inventory({ lang, profile }: Props) {
               exit={{ height: 0, opacity: 0 }}
               className="overflow-hidden"
             >
-              <div className="p-8 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[2.5rem] grid grid-cols-1 md:grid-cols-3 gap-6 shadow-sm">
+                  <div className="p-8 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[2.5rem] grid grid-cols-1 md:grid-cols-4 gap-6 shadow-sm">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-2">{t.category}</label>
                   <select 
@@ -458,8 +484,10 @@ export default function Inventory({ lang, profile }: Props) {
                     className="w-full px-5 py-3 bg-zinc-50 dark:bg-zinc-800 border-none rounded-xl text-sm outline-none focus:ring-2 ring-emerald-500/20 font-bold"
                   >
                     <option value="all">{t.all}</option>
+                    <option value="near_expiry">{lang === 'ar' ? 'قاربت على الانتهاء' : 'Near Expiry'}</option>
+                    <option value="expired">{lang === 'ar' ? 'منتهية الصلاحية' : 'Expired'}</option>
                     {categories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
                     ))}
                   </select>
                 </div>
@@ -735,140 +763,198 @@ export default function Inventory({ lang, profile }: Props) {
               className="absolute inset-0 bg-zinc-950/60 backdrop-blur-xl" 
             />
             <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 40 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 40 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="relative w-full max-w-2xl max-h-[90vh] min-h-[70vh] bg-white dark:bg-zinc-900 rounded-[3.5rem] shadow-2xl flex flex-col border border-zinc-200 dark:border-zinc-800"
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              className="relative m-modal"
             >
-              <div className="p-12 flex-1 overflow-y-auto custom-scrollbar">
-                <div className="flex items-center justify-between mb-12 sticky top-0 bg-white dark:bg-zinc-900 z-10 py-2">
-                  <h3 className="text-4xl font-black tracking-tighter">
+              <div className="p-8">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-2xl font-black tracking-tighter">
                     {editingProduct ? (lang === 'ar' ? 'تعديل منتج' : 'Edit Product') : (lang === 'ar' ? 'إضافة منتج جديد' : 'Add New Product')}
                   </h3>
-                  <button onClick={closeModal} className="p-3 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
-                    <X className="w-7 h-7" />
+                  <button onClick={closeModal} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
+                    <X className="w-6 h-6" />
                   </button>
                 </div>
 
-                <form className="space-y-8 pb-12" onSubmit={handleSubmit}>
-                  <div className="grid grid-cols-2 gap-8">
-                    <div className="space-y-3">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] ml-2">{lang === 'ar' ? 'اسم المنتج' : 'Product Name'}</label>
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{t.productName}</label>
                       <input 
                         type="text" 
-                        required 
+                        required
                         value={formData.name}
-                        onChange={(e) => setFormData({...formData, name: e.target.value})}
-                        className="w-full px-6 py-5 bg-zinc-50 dark:bg-zinc-800 border-none rounded-[1.5rem] focus:ring-4 focus:ring-emerald-500/10 outline-none font-black text-lg" 
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="m-input"
+                        placeholder={lang === 'ar' ? 'اسم المنتج' : 'Product Name'}
                       />
                     </div>
-                    <div className="space-y-3">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] ml-2">{lang === 'ar' ? 'SKU / رمز المنتج' : 'SKU'}</label>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'الباركود' : 'Barcode'}</label>
+                      <div className="relative">
+                        <input 
+                          type="text" 
+                          value={formData.barcode}
+                          onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                          className="m-input pr-12"
+                          placeholder={lang === 'ar' ? 'امسح أو أدخل الباركود' : 'Scan or enter barcode'}
+                        />
+                        <ScanBarcode className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'القسم' : 'Category'}</label>
+                      <div className="flex gap-2">
+                        <select 
+                          value={formData.category}
+                          onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                          className="m-input"
+                        >
+                          <option value="">{lang === 'ar' ? 'اختر القسم' : 'Select Category'}</option>
+                          {categories.map(cat => (
+                            <option key={cat.id} value={cat.id}>{cat.name}</option>
+                          ))}
+                        </select>
+                        <button 
+                          type="button"
+                          onClick={() => setIsCategoryModalOpen(true)}
+                          className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl hover:bg-zinc-200 transition-colors"
+                        >
+                          <Plus className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'تاريخ الصلاحية' : 'Expiry Date'}</label>
                       <input 
-                        type="text" 
-                        required 
-                        value={formData.sku}
-                        onChange={(e) => setFormData({...formData, sku: e.target.value})}
-                        className="w-full px-6 py-5 bg-zinc-50 dark:bg-zinc-800 border-none rounded-[1.5rem] focus:ring-4 focus:ring-emerald-500/10 outline-none font-black text-lg" 
+                        type="date" 
+                        value={formData.expiryDate}
+                        onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
+                        className="m-input"
                       />
                     </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-8">
-                    <div className="space-y-3">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] ml-2">{lang === 'ar' ? 'سعر الشراء' : 'Purchase Price'}</label>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{t.purchasePrice}</label>
                       <input 
                         type="number" 
-                        required 
+                        required
                         value={formData.purchasePrice}
-                        onChange={(e) => setFormData({...formData, purchasePrice: Number(e.target.value)})}
-                        className="w-full px-6 py-5 bg-zinc-50 dark:bg-zinc-800 border-none rounded-[1.5rem] focus:ring-4 focus:ring-emerald-500/10 outline-none font-black text-lg" 
+                        onChange={(e) => setFormData({ ...formData, purchasePrice: Number(e.target.value) })}
+                        className="m-input"
                       />
                     </div>
-                    <div className="space-y-3">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] ml-2">{lang === 'ar' ? 'سعر البيع (قطاعي)' : 'Retail Price'}</label>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{t.sellingPrice}</label>
                       <input 
                         type="number" 
-                        required 
+                        required
                         value={formData.sellingPrice}
-                        onChange={(e) => setFormData({...formData, sellingPrice: Number(e.target.value)})}
-                        className="w-full px-6 py-5 bg-zinc-50 dark:bg-zinc-800 border-none rounded-[1.5rem] focus:ring-4 focus:ring-emerald-500/10 outline-none font-black text-lg" 
+                        onChange={(e) => setFormData({ ...formData, sellingPrice: Number(e.target.value) })}
+                        className="m-input"
                       />
                     </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-8">
-                    <div className="space-y-3">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] ml-2">{lang === 'ar' ? 'سعر الجملة' : 'Wholesale Price'}</label>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'سعر الجملة' : 'Wholesale Price'}</label>
                       <input 
                         type="number" 
-                        required 
                         value={formData.wholesalePrice}
-                        onChange={(e) => setFormData({...formData, wholesalePrice: Number(e.target.value)})}
-                        className="w-full px-6 py-5 bg-zinc-50 dark:bg-zinc-800 border-none rounded-[1.5rem] focus:ring-4 focus:ring-emerald-500/10 outline-none font-black text-lg" 
+                        onChange={(e) => setFormData({ ...formData, wholesalePrice: Number(e.target.value) })}
+                        className="m-input"
                       />
                     </div>
-                    <div className="space-y-3">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] ml-2">{lang === 'ar' ? 'سعر VIP' : 'VIP Price'}</label>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'سعر VIP' : 'VIP Price'}</label>
                       <input 
                         type="number" 
-                        required 
                         value={formData.vipPrice}
-                        onChange={(e) => setFormData({...formData, vipPrice: Number(e.target.value)})}
-                        className="w-full px-6 py-5 bg-zinc-50 dark:bg-zinc-800 border-none rounded-[1.5rem] focus:ring-4 focus:ring-emerald-500/10 outline-none font-black text-lg" 
+                        onChange={(e) => setFormData({ ...formData, vipPrice: Number(e.target.value) })}
+                        className="m-input"
                       />
                     </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-8">
-                    <div className="space-y-3">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] ml-2">{lang === 'ar' ? 'الكمية الحالية' : 'Current Quantity'}</label>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{t.quantity}</label>
                       <input 
                         type="number" 
-                        required 
+                        required
                         value={formData.quantity}
-                        onChange={(e) => setFormData({...formData, quantity: Number(e.target.value)})}
-                        className="w-full px-6 py-5 bg-zinc-50 dark:bg-zinc-800 border-none rounded-[1.5rem] focus:ring-4 focus:ring-emerald-500/10 outline-none font-black text-lg" 
+                        onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
+                        className="m-input"
                       />
                     </div>
-                    <div className="space-y-3">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] ml-2">{lang === 'ar' ? 'تنبيه نقص المخزون' : 'Min Stock Alert'}</label>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{t.minStock}</label>
                       <input 
                         type="number" 
-                        required 
+                        required
                         value={formData.minStock}
-                        onChange={(e) => setFormData({...formData, minStock: Number(e.target.value)})}
-                        className="w-full px-6 py-5 bg-zinc-50 dark:bg-zinc-800 border-none rounded-[1.5rem] focus:ring-4 focus:ring-emerald-500/10 outline-none font-black text-lg" 
+                        onChange={(e) => setFormData({ ...formData, minStock: Number(e.target.value) })}
+                        className="m-input"
                       />
                     </div>
                   </div>
 
-                    <div className="space-y-3 col-span-2">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] ml-2">{lang === 'ar' ? 'الوصف' : 'Description'}</label>
-                      <textarea 
-                        value={formData.description}
-                        onChange={(e) => setFormData({...formData, description: e.target.value})}
-                        className="w-full px-6 py-5 bg-zinc-50 dark:bg-zinc-800 border-none rounded-[1.5rem] focus:ring-4 focus:ring-emerald-500/10 outline-none font-bold text-lg min-h-[120px]" 
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{t.description}</label>
+                    <textarea 
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      className="m-input h-24 py-3 resize-none"
+                      placeholder={lang === 'ar' ? 'وصف المنتج...' : 'Product description...'}
+                    />
+                  </div>
 
-                    <div className="flex gap-6 pt-10 col-span-2 sticky bottom-0 bg-white dark:bg-zinc-900 py-4 border-t border-zinc-100 dark:border-zinc-800">
-                    <button 
-                      type="button" 
-                      onClick={closeModal} 
-                      className="flex-1 px-10 py-6 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-[1.5rem] font-black text-lg hover:bg-zinc-200 transition-all active:scale-95"
-                    >
-                      {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                  <div className="flex gap-4 pt-4">
+                    <button type="button" onClick={closeModal} className="flex-1 h-12 rounded-xl font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 transition-all">
+                      {t.cancel}
                     </button>
-                    <button 
-                      type="submit" 
-                      className="flex-1 px-10 py-6 bg-emerald-600 text-white rounded-[1.5rem] font-black text-lg hover:bg-emerald-700 shadow-2xl shadow-emerald-600/20 transition-all active:scale-95"
-                    >
-                      {lang === 'ar' ? 'حفظ المنتج' : 'Save Product'}
+                    <button type="submit" className="flex-1 m-button-primary">
+                      {editingProduct ? t.update : t.save}
                     </button>
                   </div>
                 </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Category Modal */}
+      <AnimatePresence>
+        {isCategoryModalOpen && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsCategoryModalOpen(false)}
+              className="absolute inset-0 bg-zinc-950/60 backdrop-blur-xl" 
+            />
+            <motion.div 
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              className="relative m-modal !max-w-md"
+            >
+              <h3 className="text-xl font-black mb-6">{lang === 'ar' ? 'إضافة قسم جديد' : 'Add New Category'}</h3>
+              <div className="space-y-4">
+                <input 
+                  type="text"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  className="m-input"
+                  placeholder={lang === 'ar' ? 'اسم القسم' : 'Category Name'}
+                  autoFocus
+                />
+                <div className="flex gap-3">
+                  <button onClick={() => setIsCategoryModalOpen(false)} className="flex-1 h-11 rounded-xl font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
+                    {t.cancel}
+                  </button>
+                  <button onClick={handleAddCategory} className="flex-1 m-button-primary">
+                    {t.save}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

@@ -359,126 +359,128 @@ export default function Treasury({ lang, profile }: Props) {
               className="absolute inset-0 bg-zinc-950/60 backdrop-blur-xl" 
             />
             <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 40 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 40 }}
-              className="relative w-full max-w-2xl bg-white dark:bg-zinc-900 rounded-[3rem] p-10 shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-y-auto max-h-[90vh]"
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              className="relative m-modal !max-w-2xl"
             >
-              <div className="flex items-center justify-between mb-10">
-                <h3 className="text-3xl font-black tracking-tighter">{lang === 'ar' ? 'عملية مالية جديدة' : 'New Transaction'}</h3>
-                <button onClick={() => setIsModalOpen(false)} className="p-3 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-2xl transition-all">
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-8">
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 p-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-[1.5rem]">
-                  {[
-                    { id: 'in', label: lang === 'ar' ? 'قبض' : 'Income', icon: <ArrowUpRight className="w-4 h-4" /> },
-                    { id: 'out', label: lang === 'ar' ? 'صرف' : 'Expense', icon: <ArrowDownRight className="w-4 h-4" /> },
-                    { id: 'expense', label: lang === 'ar' ? 'مصروفات' : 'Expense', icon: <DollarSign className="w-4 h-4" /> },
-                    { id: 'supplier', label: lang === 'ar' ? 'مورد' : 'Supplier', icon: <ArrowRightLeft className="w-4 h-4" /> }
-                  ].map(type => (
-                    <button 
-                      key={type.id}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, type: type.id as any })}
-                      className={`flex flex-col items-center gap-2 py-4 rounded-2xl font-black transition-all ${
-                        formData.type === type.id 
-                          ? 'bg-white dark:bg-zinc-700 shadow-xl text-primary scale-105' 
-                          : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
-                      }`}
-                    >
-                      {type.icon}
-                      <span className="text-[10px] uppercase tracking-widest">{type.label}</span>
-                    </button>
-                  ))}
+              <div className="p-8">
+                <div className="flex items-center justify-between mb-10">
+                  <h3 className="text-3xl font-black tracking-tighter">{lang === 'ar' ? 'عملية مالية جديدة' : 'New Transaction'}</h3>
+                  <button onClick={() => setIsModalOpen(false)} className="p-3 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-2xl transition-all">
+                    <X className="w-6 h-6" />
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-3 ml-2">{lang === 'ar' ? 'حساب النقدية' : 'Cash Account'}</label>
-                    <select 
-                      required
-                      value={formData.accountId}
-                      onChange={e => setFormData({ ...formData, accountId: e.target.value })}
-                      className="w-full px-6 py-4 bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl outline-none focus:ring-4 ring-primary/10 font-bold"
-                    >
-                      <option value="">{lang === 'ar' ? 'اختر الحساب' : 'Select Account'}</option>
-                      {cashAccounts.map(a => (
-                        <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
-                      ))}
-                    </select>
+                <form onSubmit={handleSubmit} className="space-y-8">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 p-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-[1.5rem]">
+                    {[
+                      { id: 'in', label: lang === 'ar' ? 'قبض' : 'Income', icon: <ArrowUpRight className="w-4 h-4" /> },
+                      { id: 'out', label: lang === 'ar' ? 'صرف' : 'Expense', icon: <ArrowDownRight className="w-4 h-4" /> },
+                      { id: 'expense', label: lang === 'ar' ? 'مصروفات' : 'Expense', icon: <DollarSign className="w-4 h-4" /> },
+                      { id: 'supplier', label: lang === 'ar' ? 'مورد' : 'Supplier', icon: <ArrowRightLeft className="w-4 h-4" /> }
+                    ].map(type => (
+                      <button 
+                        key={type.id}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, type: type.id as any })}
+                        className={`flex flex-col items-center gap-2 py-4 rounded-2xl font-black transition-all ${
+                          formData.type === type.id 
+                            ? 'bg-white dark:bg-zinc-700 shadow-xl text-primary scale-105' 
+                            : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                        }`}
+                      >
+                        {type.icon}
+                        <span className="text-[10px] uppercase tracking-widest">{type.label}</span>
+                      </button>
+                    ))}
                   </div>
 
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-3 ml-2">{lang === 'ar' ? 'المبلغ' : 'Amount'}</label>
-                    <div className="relative">
-                      <span className="absolute left-6 top-1/2 -translate-y-1/2 font-black text-zinc-400">{currencySymbol}</span>
-                      <input 
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'حساب النقدية' : 'Cash Account'}</label>
+                      <select 
                         required
-                        type="number" 
-                        value={formData.amount || ''}
-                        onChange={e => setFormData({ ...formData, amount: parseFloat(e.target.value) })}
-                        className="w-full pl-16 pr-6 py-4 bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl outline-none focus:ring-4 ring-primary/10 text-2xl font-black"
-                        placeholder="0.00"
-                      />
+                        value={formData.accountId}
+                        onChange={e => setFormData({ ...formData, accountId: e.target.value })}
+                        className="m-input"
+                      >
+                        <option value="">{lang === 'ar' ? 'اختر الحساب' : 'Select Account'}</option>
+                        {cashAccounts.map(a => (
+                          <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'المبلغ' : 'Amount'}</label>
+                      <div className="relative">
+                        <span className="absolute left-6 top-1/2 -translate-y-1/2 font-black text-zinc-400">{currencySymbol}</span>
+                        <input 
+                          required
+                          type="number" 
+                          value={formData.amount || ''}
+                          onChange={e => setFormData({ ...formData, amount: parseFloat(e.target.value) })}
+                          className="m-input pl-16 text-2xl font-black"
+                          placeholder="0.00"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {formData.type === 'expense' && (
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-3 ml-2">{lang === 'ar' ? 'بند المصروف' : 'Expense Category'}</label>
-                    <select 
+                  {formData.type === 'expense' && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'بند المصروف' : 'Expense Category'}</label>
+                      <select 
+                        required
+                        value={formData.expenseAccountId}
+                        onChange={e => setFormData({ ...formData, expenseAccountId: e.target.value })}
+                        className="m-input"
+                      >
+                        <option value="">{lang === 'ar' ? 'اختر البند' : 'Select Category'}</option>
+                        {expenseAccounts.map(a => (
+                          <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {formData.type === 'supplier' && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'المورد' : 'Supplier'}</label>
+                      <select 
+                        required
+                        value={formData.supplierId}
+                        onChange={e => setFormData({ ...formData, supplierId: e.target.value })}
+                        className="m-input"
+                      >
+                        <option value="">{lang === 'ar' ? 'اختر المورد' : 'Select Supplier'}</option>
+                        {suppliers.map(s => (
+                          <option key={s.id} value={s.id}>{s.name} (Balance: {s.balance})</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-zinc-400 uppercase tracking-widest ml-2">{lang === 'ar' ? 'البيان' : 'Description'}</label>
+                    <textarea 
                       required
-                      value={formData.expenseAccountId}
-                      onChange={e => setFormData({ ...formData, expenseAccountId: e.target.value })}
-                      className="w-full px-6 py-4 bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl outline-none focus:ring-4 ring-primary/10 font-bold"
-                    >
-                      <option value="">{lang === 'ar' ? 'اختر البند' : 'Select Category'}</option>
-                      {expenseAccounts.map(a => (
-                        <option key={a.id} value={a.id}>{a.code} - {a.name}</option>
-                      ))}
-                    </select>
+                      value={formData.description}
+                      onChange={e => setFormData({ ...formData, description: e.target.value })}
+                      className="m-input h-32 resize-none font-medium py-4"
+                      placeholder={lang === 'ar' ? 'اكتب تفاصيل العملية هنا...' : 'Write transaction details here...'}
+                    />
                   </div>
-                )}
 
-                {formData.type === 'supplier' && (
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-3 ml-2">{lang === 'ar' ? 'المورد' : 'Supplier'}</label>
-                    <select 
-                      required
-                      value={formData.supplierId}
-                      onChange={e => setFormData({ ...formData, supplierId: e.target.value })}
-                      className="w-full px-6 py-4 bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl outline-none focus:ring-4 ring-primary/10 font-bold"
-                    >
-                      <option value="">{lang === 'ar' ? 'اختر المورد' : 'Select Supplier'}</option>
-                      {suppliers.map(s => (
-                        <option key={s.id} value={s.id}>{s.name} (Balance: {s.balance})</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-3 ml-2">{lang === 'ar' ? 'البيان' : 'Description'}</label>
-                  <textarea 
-                    required
-                    value={formData.description}
-                    onChange={e => setFormData({ ...formData, description: e.target.value })}
-                    className="w-full px-6 py-4 bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl outline-none focus:ring-4 ring-primary/10 h-32 resize-none font-medium"
-                    placeholder={lang === 'ar' ? 'اكتب تفاصيل العملية هنا...' : 'Write transaction details here...'}
-                  />
-                </div>
-
-                <button 
-                  type="submit"
-                  className="w-full py-6 bg-primary text-white rounded-[1.5rem] font-black text-lg shadow-2xl shadow-primary/30 hover:bg-primary-hover transition-all active:scale-95"
-                >
-                  {lang === 'ar' ? 'تأكيد العملية' : 'Confirm Transaction'}
-                </button>
-              </form>
+                  <button 
+                    type="submit"
+                    className="w-full py-6 bg-primary text-white rounded-[1.5rem] font-black text-lg shadow-2xl shadow-primary/30 hover:bg-primary-hover transition-all active:scale-95"
+                  >
+                    {lang === 'ar' ? 'تأكيد العملية' : 'Confirm Transaction'}
+                  </button>
+                </form>
+              </div>
             </motion.div>
           </div>
         )}
